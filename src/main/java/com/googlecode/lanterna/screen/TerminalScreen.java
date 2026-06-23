@@ -46,9 +46,10 @@ public class TerminalScreen extends AbstractScreen {
 
     // OSC 8 hyperlink escape fragments — opening wraps the URL, closing resets.
     // Format: ESC ] 8 ; ; URL ESC \   (open)   ESC ] 8 ; ; ESC \   (close)
+    // TS uses BEL (\u0007) as OSC 8 terminator — more widely supported than ST
     private static final String HYPERLINK_OPEN_PREFIX = "\u001B]8;;";
-    private static final String HYPERLINK_OPEN_SUFFIX = "\u001B\\";
-    private static final String HYPERLINK_CLOSE       = "\u001B]8;;\u001B\\";
+    private static final String HYPERLINK_OPEN_SUFFIX = "\u0007";
+    private static final String HYPERLINK_CLOSE       = "\u001B]8;;\u0007";
 
     /**
      * Creates a new Screen on top of a supplied terminal, will query the terminal for its size. The screen is initially
