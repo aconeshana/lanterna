@@ -143,7 +143,13 @@ public class DefaultTerminalFactory implements TerminalFactory {
             return createWindowsTerminal();
         }
 
-        return createUnixTerminal(outputStream, inputStream, charset);
+        try {
+            return createUnixTerminal(outputStream, inputStream, charset);
+        } catch (IOException e) {
+            // Fallback for non-TTY environments (CI, piped stdin, etc.)
+            // Use VirtualTerminal which doesn't require /dev/tty
+            return new com.googlecode.lanterna.terminal.virtual.DefaultVirtualTerminal();
+        }
     }
 
     /**
