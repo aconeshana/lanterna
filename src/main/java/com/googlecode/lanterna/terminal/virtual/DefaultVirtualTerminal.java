@@ -179,6 +179,34 @@ public class DefaultVirtualTerminal extends AbstractTerminal implements VirtualT
         }
     }
 
+    // ── Terminal protocol extensions (no-ops for virtual terminal) ──────────
+    // The virtual terminal is an in-memory mock with no real terminal backend,
+    // so DEC 2026 synchronized output, DEC 2004 bracketed paste, DECSCUSR
+    // cursor shape, and OSC emission have no observable effect. Override the
+    // default methods (which call putString with ESC-containing sequences that
+    // TextCharacter.fromString would reject) with no-ops.
+
+    @Override
+    public void enableSynchronizedOutput()  { /* no-op for virtual terminal */ }
+
+    @Override
+    public void disableSynchronizedOutput() { /* no-op for virtual terminal */ }
+
+    @Override
+    public void enableBracketedPaste()      { /* no-op for virtual terminal */ }
+
+    @Override
+    public void disableBracketedPaste()     { /* no-op for virtual terminal */ }
+
+    @Override
+    public void setCursorStyle(com.googlecode.lanterna.CursorStyle style) { /* no-op */ }
+
+    @Override
+    public void emitOSC(String code, String payload) { /* no-op for virtual terminal */ }
+
+    @Override
+    public void setClipboardOSC52(String base64Text) { /* no-op for virtual terminal */ }
+
     @Override
     public synchronized void enableSGR(SGR sgr) {
         activeModifiers.add(sgr);
