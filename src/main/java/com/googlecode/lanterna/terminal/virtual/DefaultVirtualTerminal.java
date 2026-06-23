@@ -208,6 +208,12 @@ public class DefaultVirtualTerminal extends AbstractTerminal implements VirtualT
     public void setClipboardOSC52(String base64Text) { /* no-op for virtual terminal */ }
 
     @Override
+    public void enableFocusReporting()  { /* no-op for virtual terminal */ }
+
+    @Override
+    public void disableFocusReporting() { /* no-op for virtual terminal */ }
+
+    @Override
     public synchronized void enableSGR(SGR sgr) {
         activeModifiers.add(sgr);
     }

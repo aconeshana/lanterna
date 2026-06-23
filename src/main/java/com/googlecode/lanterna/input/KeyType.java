@@ -101,6 +101,12 @@ public enum KeyType {
      */
     OSC_RESPONSE,
     /**
+     * This value is returned when the terminal sends a DEC 1004 focus event
+     * ({@code ESC [ I} for focus-in, {@code ESC [ O} for focus-out).
+     * The focused state is carried by the {@code FocusEventKeyStroke} subclass.
+     */
+    FOCUS_EVENT,
+    /**
      * This value is returned when you try to read input and the input stream has been closed.
      */
     EOF,
