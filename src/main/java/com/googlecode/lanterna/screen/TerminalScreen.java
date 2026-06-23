@@ -48,8 +48,27 @@ public class TerminalScreen extends AbstractScreen {
     // Format: ESC ] 8 ; ; URL ESC \   (open)   ESC ] 8 ; ; ESC \   (close)
     // TS uses BEL (\u0007) as OSC 8 terminator — more widely supported than ST
     private static final String HYPERLINK_OPEN_PREFIX = "\u001B]8;;";
-    private static final String HYPERLINK_OPEN_SUFFIX = "\u0007";
-    private static final String HYPERLINK_CLOSE       = "\u001B]8;;\u0007";
+    // TS osc() uses ST (ESC \\u001B\\\\) for Kitty, BEL (\\u0007) for others.
+    // Detect Kitty at runtime and use appropriate terminator.
+    private static final String HYPERLINK_OPEN_SUFFIX_BEL = "\u0007";
+    private static final String HYPERLINK_OPEN_SUFFIX_ST  = "\u001B\\\\";
+    private static final String HYPERLINK_CLOSE_BEL = "\u001B]8;;\u0007";
+    private static final String HYPERLINK_CLOSE_ST  = "\u001B]8;;\u001B\\\\";
+    private static final String HYPERLINK_OPEN_SUFFIX;
+    private static final String HYPERLINK_CLOSE;
+    static {
+        String termProgram = System.getenv("TERM_PROGRAM");
+        String term = System.getenv("TERM");
+        boolean isKitty = "kitty".equals(termProgram)
+            || (term != null && term.contains("kitty"));
+        if (isKitty) {
+            HYPERLINK_OPEN_SUFFIX = HYPERLINK_OPEN_SUFFIX_ST;
+            HYPERLINK_CLOSE = HYPERLINK_CLOSE_ST;
+        } else {
+            HYPERLINK_OPEN_SUFFIX = HYPERLINK_OPEN_SUFFIX_BEL;
+            HYPERLINK_CLOSE = HYPERLINK_CLOSE_BEL;
+        }
+    }
 
     /**
      * Creates a new Screen on top of a supplied terminal, will query the terminal for its size. The screen is initially
