@@ -354,6 +354,24 @@ public interface Terminal extends InputProvider, Closeable {
     }
 
     /**
+     * Enables focus event reporting (DEC 1004). When enabled, the terminal
+     * sends {@code ESC [ I} when the window gains focus and {@code ESC [ O}
+     * when it loses focus. Used by TS to pause spinner animations when the
+     * terminal is unfocused.
+     * Emits {@code ESC [ ? 1004 h}.
+     */
+    default void enableFocusReporting() throws IOException {
+        putString("\u001B[?1004h");
+    }
+
+    /**
+     * Disables focus event reporting (DEC 1004). Emits {@code ESC [ ? 1004 l}.
+     */
+    default void disableFocusReporting() throws IOException {
+        putString("\u001B[?1004l");
+    }
+
+    /**
      * Sets the cursor shape via DECSCUSR. Useful for indicating the current
      * editing mode (block for NORMAL, bar for INSERT, underline for VISUAL).
      * <p>
