@@ -56,7 +56,8 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
                     new MouseCharacterPattern(),
                     new BracketedPastePattern(),
                     new OSCResponsePattern(),
-                    new FocusEventPattern()
+                    new FocusEventPattern(),
+                    new KittyKeyPattern()
             }));
 
     @Override

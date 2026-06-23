@@ -214,6 +214,12 @@ public class DefaultVirtualTerminal extends AbstractTerminal implements VirtualT
     public void disableFocusReporting() { /* no-op for virtual terminal */ }
 
     @Override
+    public void enableKittyKeyboard()  { /* no-op for virtual terminal */ }
+
+    @Override
+    public void disableKittyKeyboard() { /* no-op for virtual terminal */ }
+
+    @Override
     public synchronized void enableSGR(SGR sgr) {
         activeModifiers.add(sgr);
     }

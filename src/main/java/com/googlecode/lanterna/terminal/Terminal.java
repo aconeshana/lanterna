@@ -372,6 +372,33 @@ public interface Terminal extends InputProvider, Closeable {
     }
 
     /**
+     * Enables the Kitty keyboard protocol (CSI &gt; 1 u). When enabled, the
+     * terminal sends key events in the uniform {@code ESC [ keycode ; mods u}
+     * format, which supports modifier-only keys (Shift/Ctrl/Alt alone) and
+     * keys that don't produce characters. Parsed by {@link com.googlecode.lanterna.input.KittyKeyPattern}.
+     * <p>
+     * Also enables xterm modifyOtherKeys mode for broader compatibility.
+     * Terminals without Kitty support silently ignore the sequence.
+     */
+    default void enableKittyKeyboard() throws IOException {
+        // modifyOtherKeys = 2 (xterm extended)
+        putString("\u001B[>4;2m");
+        // Kitty keyboard push flags, set 1 (full keyboard mode)
+        putString("\u001B[>1u");
+    }
+
+    /**
+     * Disables the Kitty keyboard protocol (CSI &lt; 1 u) and resets
+     * modifyOtherKeys. The terminal reverts to its default key encoding.
+     */
+    default void disableKittyKeyboard() throws IOException {
+        // Kitty keyboard pop flags
+        putString("\u001B[<1u");
+        // Reset modifyOtherKeys
+        putString("\u001B[>4m");
+    }
+
+    /**
      * Sets the cursor shape via DECSCUSR. Useful for indicating the current
      * editing mode (block for NORMAL, bar for INSERT, underline for VISUAL).
      * <p>
