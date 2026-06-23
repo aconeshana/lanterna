@@ -19,6 +19,7 @@
 package com.googlecode.lanterna.terminal;
 
 import com.googlecode.lanterna.SGR;
+import com.googlecode.lanterna.CursorStyle;
 import com.googlecode.lanterna.TerminalPosition;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
@@ -304,4 +305,119 @@ public interface Terminal extends InputProvider, Closeable {
      * @throws IOException If there was an underlying I/O error
      */
     void close() throws IOException;
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Terminal protocol extensions (added by claude-code-java fork)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Enables synchronized output mode (DEC 2026). When enabled, the terminal
+     * buffers all output until {@link #disableSynchronizedOutput()} is called,
+     * then renders it in a single atomic update. This eliminates flicker when
+     * redrawing large portions of the screen (e.g., during {@code Screen.refresh()}).
+     * <p>
+     * Emits {@code ESC [ ? 2026 h}. Terminals that don't support DEC 2026
+     * silently ignore this sequence (no harm done).
+     * @throws IOException if the underlying write fails
+     */
+    default void enableSynchronizedOutput() throws IOException {
+        putString("\u001B[?2026h");
+    }
+
+    /**
+     * Disables synchronized output mode (DEC 2026).
+     * <p>
+     * Emits {@code ESC [ ? 2026 l}.
+     * @throws IOException if the underlying write fails
+     */
+    default void disableSynchronizedOutput() throws IOException {
+        putString("\u001B[?2026l");
+    }
+
+    /**
+     * Enables bracketed paste mode (DEC 2004). When enabled, the terminal
+     * wraps pasted text with ESC [ 200 ~ ... ESC [ 201 ~ so the application
+     * can distinguish paste from keyboard input. The BracketedPastePattern
+     * decodes the wrapper into a PasteKeyStroke.
+     * Emits ESC [ ? 2004 h. Should be paired with disableBracketedPaste()
+     * on shutdown.
+     */
+    default void enableBracketedPaste() throws IOException {
+        putString("\u001B[?2004h");
+    }
+
+    /**
+     * Disables bracketed paste mode (DEC 2004). Emits ESC [ ? 2004 l.
+     */
+    default void disableBracketedPaste() throws IOException {
+        putString("\u001B[?2004l");
+    }
+
+    /**
+     * Sets the cursor shape via DECSCUSR. Useful for indicating the current
+     * editing mode (block for NORMAL, bar for INSERT, underline for VISUAL).
+     * <p>
+     * Emits {@code ESC [ N q} where N is the {@link CursorStyle#code()}.
+     * @param style cursor shape; if null, falls back to {@link CursorStyle#DEFAULT}
+     * @throws IOException if the underlying write fails
+     */
+    default void setCursorStyle(CursorStyle style) throws IOException {
+        int n = (style == null) ? CursorStyle.DEFAULT.code() : style.code();
+        putString("\u001B[" + n + " q");
+    }
+
+    /**
+     * Emits a raw Operating System Command (OSC) sequence, terminated with
+     * the String Terminator ({@code ESC \}). The payload should NOT include
+     * the leading {@code ESC ]} or trailing terminator — this method adds them.
+     * <p>
+     * Example: {@code emitOSC("8", ";;https://example.com")} emits
+     * {@code ESC ] 8 ; ; https://example.com ESC \}.
+     * <p>
+     * When running inside tmux or GNU screen, the sequence is automatically
+     * wrapped in DCS passthrough so the multiplexer forwards it to the outer
+     * terminal. (Detection via {@code TMUX} / {@code STY} env vars.)
+     * @param code the OSC numeric code (e.g., {@code "0"} for title, {@code "8"}
+     *             for hyperlinks, {@code "9;4"} for progress, {@code "11"} for
+     *             color query, {@code "52"} for clipboard, {@code "1337"} for
+     *             iTerm2 extensions, {@code "21337"} for tab status)
+     * @param payload text after the code and semicolon; may be empty
+     * @throws IOException if the underlying write fails
+     */
+    default void emitOSC(String code, String payload) throws IOException {
+        String seq = "\u001B]" + code + ";" + payload + "\u001B\\";
+        String wrapped = wrapForMultiplexer(seq);
+        putString(wrapped);
+    }
+
+    /**
+     * Sets the system clipboard via OSC 52. The payload is the base64-encoded
+     * UTF-8 bytes of the text to place on the clipboard. When running inside
+     * tmux/screen the sequence is auto-wrapped in DCS passthrough.
+     * <p>
+     * Emits {@code ESC ] 52 ; c ; <base64> ESC \}.
+     * @param base64Text base64-encoded UTF-8 text to put on the clipboard
+     * @throws IOException if the underlying write fails
+     */
+    default void setClipboardOSC52(String base64Text) throws IOException {
+        emitOSC("52", "c;" + (base64Text == null ? "" : base64Text));
+    }
+
+    /**
+     * Wraps an escape sequence in tmux / GNU screen DCS passthrough so the
+     * multiplexer forwards it to the outer terminal. Inner ESC bytes are
+     * doubled per tmux convention. Returns the input unchanged when not
+     * inside a multiplexer.
+     */
+    static String wrapForMultiplexer(String sequence) {
+        String tmux = System.getenv("TMUX");
+        if (tmux != null && !tmux.isEmpty()) {
+            return "\u001BPtmux;" + sequence.replace("\u001B", "\u001B\u001B") + "\u001B\\";
+        }
+        String sty = System.getenv("STY");
+        if (sty != null && !sty.isEmpty()) {
+            return "\u001BP" + sequence + "\u001B\\";
+        }
+        return sequence;
+    }
 }

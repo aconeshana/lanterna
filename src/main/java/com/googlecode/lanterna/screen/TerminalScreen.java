@@ -44,6 +44,12 @@ public class TerminalScreen extends AbstractScreen {
     private boolean fullRedrawHint;
     private ScrollHint scrollHint;
 
+    // OSC 8 hyperlink escape fragments — opening wraps the URL, closing resets.
+    // Format: ESC ] 8 ; ; URL ESC \   (open)   ESC ] 8 ; ; ESC \   (close)
+    private static final String HYPERLINK_OPEN_PREFIX = "\u001B]8;;";
+    private static final String HYPERLINK_OPEN_SUFFIX = "\u001B\\";
+    private static final String HYPERLINK_CLOSE       = "\u001B]8;;\u001B\\";
+
     /**
      * Creates a new Screen on top of a supplied terminal, will query the terminal for its size. The screen is initially
      * blank. The default character used for unused space (the newly initialized state of the screen and new areas after
@@ -135,37 +141,46 @@ public class TerminalScreen extends AbstractScreen {
         if(!isStarted) {
             return;
         }
-        if((refreshType == RefreshType.AUTOMATIC && fullRedrawHint) || refreshType == RefreshType.COMPLETE) {
-            refreshFull();
-            fullRedrawHint = false;
-        }
-        else if(refreshType == RefreshType.AUTOMATIC &&
-                (scrollHint == null || scrollHint == ScrollHint.INVALID)) {
-            double threshold = getTerminalSize().getRows() * getTerminalSize().getColumns() * 0.75;
-            if(getBackBuffer().isVeryDifferent(getFrontBuffer(), (int) threshold)) {
+        // Wrap the entire refresh in DEC 2026 synchronized-output mode so the
+        // terminal renders the update atomically — eliminates visible flicker
+        // on full redraws and large delta updates. Terminals without DEC 2026
+        // support silently ignore the escape sequences (no regression).
+        getTerminal().enableSynchronizedOutput();
+        try {
+            if((refreshType == RefreshType.AUTOMATIC && fullRedrawHint) || refreshType == RefreshType.COMPLETE) {
                 refreshFull();
+                fullRedrawHint = false;
+            }
+            else if(refreshType == RefreshType.AUTOMATIC &&
+                    (scrollHint == null || scrollHint == ScrollHint.INVALID)) {
+                double threshold = getTerminalSize().getRows() * getTerminalSize().getColumns() * 0.75;
+                if(getBackBuffer().isVeryDifferent(getFrontBuffer(), (int) threshold)) {
+                    refreshFull();
+                }
+                else {
+                    refreshByDelta();
+                }
             }
             else {
                 refreshByDelta();
             }
-        }
-        else {
-            refreshByDelta();
-        }
-        getBackBuffer().copyTo(getFrontBuffer());
-        TerminalPosition cursorPosition = getCursorPosition();
-        if(cursorPosition != null) {
-            getTerminal().setCursorVisible(true);
-            //If we are trying to move the cursor to the padding of a double-width character, put it on the actual character instead
-            if(cursorPosition.getColumn() > 0 &&
-                            getFrontBuffer().getCharacterAt(cursorPosition.withRelativeColumn(-1)).isDoubleWidth()) {
-                getTerminal().setCursorPosition(cursorPosition.getColumn() - 1, cursorPosition.getRow());
+            getBackBuffer().copyTo(getFrontBuffer());
+            TerminalPosition cursorPosition = getCursorPosition();
+            if(cursorPosition != null) {
+                getTerminal().setCursorVisible(true);
+                //If we are trying to move the cursor to the padding of a double-width character, put it on the actual character instead
+                if(cursorPosition.getColumn() > 0 &&
+                                getFrontBuffer().getCharacterAt(cursorPosition.withRelativeColumn(-1)).isDoubleWidth()) {
+                    getTerminal().setCursorPosition(cursorPosition.getColumn() - 1, cursorPosition.getRow());
+                }
+                else {
+                    getTerminal().setCursorPosition(cursorPosition.getColumn(), cursorPosition.getRow());
+                }
+            } else {
+                getTerminal().setCursorVisible(false);
             }
-            else {
-                getTerminal().setCursorPosition(cursorPosition.getColumn(), cursorPosition.getRow());
-            }
-        } else {
-            getTerminal().setCursorVisible(false);
+        } finally {
+            getTerminal().disableSynchronizedOutput();
         }
         getTerminal().flush();
     }
@@ -226,8 +241,14 @@ public class TerminalScreen extends AbstractScreen {
         TextColor currentBackgroundColor = firstScreenCharacterToUpdate.getBackgroundColor();
         getTerminal().setForegroundColor(currentForegroundColor);
         getTerminal().setBackgroundColor(currentBackgroundColor);
+        // Track OSC 8 hyperlink state across cells — close before any cursor jump
+        String currentHyperlinkUrl = null;
         for(TerminalPosition position: updateMap.keySet()) {
             if(!position.equals(currentPosition)) {
+                if (currentHyperlinkUrl != null) {
+                    getTerminal().putString(HYPERLINK_CLOSE);
+                    currentHyperlinkUrl = null;
+                }
                 getTerminal().setCursorPosition(position.getColumn(), position.getRow());
                 currentPosition = position;
             }
@@ -250,6 +271,25 @@ public class TerminalScreen extends AbstractScreen {
                     currentSGR.add(sgr);
                 }
             }
+            // OSC 8 hyperlink transition
+            String newUrl = newCharacter.getHyperlinkUrl();
+            if (!java.util.Objects.equals(currentHyperlinkUrl, newUrl)) {
+                if (currentHyperlinkUrl != null) {
+                    getTerminal().putString(HYPERLINK_CLOSE);
+                }
+                if (newUrl != null) {
+                    getTerminal().putString(HYPERLINK_OPEN_PREFIX + newUrl + HYPERLINK_OPEN_SUFFIX);
+                }
+                currentHyperlinkUrl = newUrl;
+            }
+            // OSC 133 prompt marker (one-shot at this cell)
+            if (newCharacter.getPromptMarker() != null) {
+                getTerminal().putString(newCharacter.getPromptMarker().escapeSequence());
+            }
+            // OSC 1337 inline image (one-shot at this cell)
+            if (newCharacter.getImageCell() != null) {
+                getTerminal().putString(newCharacter.getImageCell().escapeSequence());
+            }
             getTerminal().putString(newCharacter.getCharacterString());
             if(newCharacter.isDoubleWidth()) {
                 // Double-width characters advances two columns
@@ -259,6 +299,10 @@ public class TerminalScreen extends AbstractScreen {
                 // Normal characters advances one column
                 currentPosition = currentPosition.withRelativeColumn(1);
             }
+        }
+        // Close any dangling hyperlink at end of refresh
+        if (currentHyperlinkUrl != null) {
+            getTerminal().putString(HYPERLINK_CLOSE);
         }
     }
 
@@ -272,12 +316,24 @@ public class TerminalScreen extends AbstractScreen {
         EnumSet<SGR> currentSGR = EnumSet.noneOf(SGR.class);
         TextColor currentForegroundColor = TextColor.ANSI.DEFAULT;
         TextColor currentBackgroundColor = TextColor.ANSI.DEFAULT;
+        // Track OSC 8 hyperlink state across the full redraw
+        String currentHyperlinkUrl = null;
         for(int y = 0; y < getTerminalSize().getRows(); y++) {
+            // Close any open hyperlink before jumping to a new row
+            if (currentHyperlinkUrl != null) {
+                getTerminal().putString(HYPERLINK_CLOSE);
+                currentHyperlinkUrl = null;
+            }
             getTerminal().setCursorPosition(0, y);
             int currentColumn = 0;
             for(int x = 0; x < getTerminalSize().getColumns(); x++) {
                 TextCharacter newCharacter = getBackBuffer().getCharacterAt(x, y);
                 if(newCharacter.equals(DEFAULT_CHARACTER)) {
+                    // Closing hyperlink on a gap keeps terminal state clean
+                    if (currentHyperlinkUrl != null) {
+                        getTerminal().putString(HYPERLINK_CLOSE);
+                        currentHyperlinkUrl = null;
+                    }
                     continue;
                 }
 
@@ -300,8 +356,31 @@ public class TerminalScreen extends AbstractScreen {
                     }
                 }
                 if(currentColumn != x) {
+                    if (currentHyperlinkUrl != null) {
+                        getTerminal().putString(HYPERLINK_CLOSE);
+                        currentHyperlinkUrl = null;
+                    }
                     getTerminal().setCursorPosition(x, y);
                     currentColumn = x;
+                }
+                // OSC 8 hyperlink transition
+                String newUrl = newCharacter.getHyperlinkUrl();
+                if (!java.util.Objects.equals(currentHyperlinkUrl, newUrl)) {
+                    if (currentHyperlinkUrl != null) {
+                        getTerminal().putString(HYPERLINK_CLOSE);
+                    }
+                    if (newUrl != null) {
+                        getTerminal().putString(HYPERLINK_OPEN_PREFIX + newUrl + HYPERLINK_OPEN_SUFFIX);
+                    }
+                    currentHyperlinkUrl = newUrl;
+                }
+                // OSC 133 prompt marker (one-shot at this cell)
+                if (newCharacter.getPromptMarker() != null) {
+                    getTerminal().putString(newCharacter.getPromptMarker().escapeSequence());
+                }
+                // OSC 1337 inline image (one-shot at this cell)
+                if (newCharacter.getImageCell() != null) {
+                    getTerminal().putString(newCharacter.getImageCell().escapeSequence());
                 }
                 getTerminal().putString(newCharacter.getCharacterString());
                 if(newCharacter.isDoubleWidth()) {
@@ -314,6 +393,10 @@ public class TerminalScreen extends AbstractScreen {
                     currentColumn += 1;
                 }
             }
+        }
+        // Close any dangling hyperlink at end of full redraw
+        if (currentHyperlinkUrl != null) {
+            getTerminal().putString(HYPERLINK_CLOSE);
         }
     }
     

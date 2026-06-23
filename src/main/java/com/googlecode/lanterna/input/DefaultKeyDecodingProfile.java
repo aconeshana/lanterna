@@ -53,7 +53,9 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
                     new CtrlAndCharacterPattern(),
                     new CtrlAltAndCharacterPattern(),
                     new ScreenInfoCharacterPattern(),
-                    new MouseCharacterPattern()
+                    new MouseCharacterPattern(),
+                    new BracketedPastePattern(),
+                    new OSCResponsePattern()
             }));
 
     @Override

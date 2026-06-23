@@ -84,6 +84,23 @@ public enum KeyType {
      */
     MOUSE_EVENT,
     /**
+     * This value is returned when the terminal sends a bracketed paste sequence
+     * ({@code ESC [ 200 ~} ... {@code ESC [ 201 ~}). The pasted text is carried
+     * by the {@link KeyStroke} as a String via the {@code PasteKeyStroke} subclass
+     * — call {@code keyStroke.toString()} or {@code instanceof PasteKeyStroke}
+     * to retrieve it. Requires the terminal to have bracketed-paste mode enabled
+     * (the application sends {@code ESC [ ? 2004 h} to enable it).
+     */
+    PASTE,
+    /**
+     * This value is returned when the terminal sends an unsolicited OSC
+     * (Operating System Command) response, e.g. the reply to an
+     * {@code OSC 11} background color query or {@code OSC 52} clipboard read.
+     * The OSC code and payload are carried by the {@code OSCResponseKeyStroke}
+     * subclass — use {@code instanceof OSCResponseKeyStroke} to access them.
+     */
+    OSC_RESPONSE,
+    /**
      * This value is returned when you try to read input and the input stream has been closed.
      */
     EOF,

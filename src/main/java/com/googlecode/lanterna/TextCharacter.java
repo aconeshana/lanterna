@@ -89,6 +89,25 @@ public class TextCharacter implements Serializable {
     private final EnumSet<SGR> modifiers;  //This isn't immutable, but we should treat it as such and not expose it!
 
     /**
+     * Optional OSC 8 hyperlink URL. When non-null, the Screen emits
+     * {@code ESC ] 8 ; ; URL ESC \} before this cell and closes the hyperlink
+     * after the run of cells sharing the same URL. Null means no hyperlink.
+     */
+    private final String hyperlinkUrl;
+
+    /**
+     * Optional OSC 1337 inline image. When non-null, the Screen emits the
+     * image escape sequence at this cell. Null means no image.
+     */
+    private final ImageCell imageCell;
+
+    /**
+     * Optional OSC 133 prompt marker. When non-null, the Screen emits the
+     * marker's escape sequence before this cell. Null means no marker.
+     */
+    private final PromptMarker promptMarker;
+
+    /**
      * Creates a {@code ScreenCharacter} based on a supplied character, with default colors and no extra modifiers.
      * @param character Physical character to use
      * @deprecated Use fromCharacter instead
@@ -162,6 +181,17 @@ public class TextCharacter implements Serializable {
             TextColor foregroundColor,
             TextColor backgroundColor,
             EnumSet<SGR> modifiers) {
+        this(character, foregroundColor, backgroundColor, modifiers, null, null, null);
+    }
+
+    private TextCharacter(
+            String character,
+            TextColor foregroundColor,
+            TextColor backgroundColor,
+            EnumSet<SGR> modifiers,
+            String hyperlinkUrl,
+            ImageCell imageCell,
+            PromptMarker promptMarker) {
 
         if (character.isEmpty()) {
             throw new IllegalArgumentException("Cannot create TextCharacter from an empty string");
@@ -188,6 +218,9 @@ public class TextCharacter implements Serializable {
         this.foregroundColor = foregroundColor;
         this.backgroundColor = backgroundColor;
         this.modifiers = EnumSet.copyOf(modifiers);
+        this.hyperlinkUrl = hyperlinkUrl;
+        this.imageCell = imageCell;
+        this.promptMarker = promptMarker;
     }
 
     private void validateSingleCharacter(String character) {
@@ -317,7 +350,8 @@ public class TextCharacter implements Serializable {
         if(this.character.equals(Character.toString(character))) {
             return this;
         }
-        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers);
+        return new TextCharacter(Character.toString(character), foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     /**
@@ -329,7 +363,8 @@ public class TextCharacter implements Serializable {
         if(this.foregroundColor == foregroundColor || this.foregroundColor.equals(foregroundColor)) {
             return this;
         }
-        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers);
+        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     /**
@@ -341,7 +376,8 @@ public class TextCharacter implements Serializable {
         if(this.backgroundColor == backgroundColor || this.backgroundColor.equals(backgroundColor)) {
             return this;
         }
-        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers);
+        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     /**
@@ -355,7 +391,8 @@ public class TextCharacter implements Serializable {
         if(modifiers.equals(newSet)) {
             return this;
         }
-        return new TextCharacter(character, foregroundColor, backgroundColor, newSet);
+        return new TextCharacter(character, foregroundColor, backgroundColor, newSet,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     /**
@@ -370,7 +407,8 @@ public class TextCharacter implements Serializable {
         }
         EnumSet<SGR> newSet = EnumSet.copyOf(this.modifiers);
         newSet.add(modifier);
-        return new TextCharacter(character, foregroundColor, backgroundColor, newSet);
+        return new TextCharacter(character, foregroundColor, backgroundColor, newSet,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     /**
@@ -386,7 +424,74 @@ public class TextCharacter implements Serializable {
         }
         EnumSet<SGR> newSet = EnumSet.copyOf(this.modifiers);
         newSet.remove(modifier);
-        return new TextCharacter(character, foregroundColor, backgroundColor, newSet);
+        return new TextCharacter(character, foregroundColor, backgroundColor, newSet,
+                hyperlinkUrl, imageCell, promptMarker);
+    }
+
+    /**
+     * Returns the OSC 8 hyperlink URL attached to this cell, or {@code null} if none.
+     * @return hyperlink URL or null
+     */
+    public String getHyperlinkUrl() {
+        return hyperlinkUrl;
+    }
+
+    /**
+     * Returns the OSC 1337 inline image attached to this cell, or {@code null} if none.
+     * @return image cell or null
+     */
+    public ImageCell getImageCell() {
+        return imageCell;
+    }
+
+    /**
+     * Returns the OSC 133 prompt marker attached to this cell, or {@code null} if none.
+     * @return prompt marker or null
+     */
+    public PromptMarker getPromptMarker() {
+        return promptMarker;
+    }
+
+    /**
+     * Returns a copy of this TextCharacter with the specified OSC 8 hyperlink URL.
+     * Pass {@code null} to remove any existing hyperlink.
+     * @param hyperlinkUrl URL the hyperlink should point to, or null to clear
+     * @return Copy of the TextCharacter with the hyperlink set
+     */
+    public TextCharacter withHyperlink(String hyperlinkUrl) {
+        if (Objects.equals(this.hyperlinkUrl, hyperlinkUrl)) {
+            return this;
+        }
+        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
+    }
+
+    /**
+     * Returns a copy of this TextCharacter with the specified OSC 1337 inline image.
+     * Pass {@code null} to remove any existing image.
+     * @param imageCell image metadata, or null to clear
+     * @return Copy of the TextCharacter with the image set
+     */
+    public TextCharacter withImageCell(ImageCell imageCell) {
+        if (Objects.equals(this.imageCell, imageCell)) {
+            return this;
+        }
+        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
+    }
+
+    /**
+     * Returns a copy of this TextCharacter with the specified OSC 133 prompt marker.
+     * Pass {@code null} to remove any existing marker.
+     * @param promptMarker marker enum, or null to clear
+     * @return Copy of the TextCharacter with the marker set
+     */
+    public TextCharacter withPromptMarker(PromptMarker promptMarker) {
+        if (Objects.equals(this.promptMarker, promptMarker)) {
+            return this;
+        }
+        return new TextCharacter(character, foregroundColor, backgroundColor, modifiers,
+                hyperlinkUrl, imageCell, promptMarker);
     }
 
     public boolean isDoubleWidth() {
@@ -428,7 +533,16 @@ public class TextCharacter implements Serializable {
         if(!Objects.equals(this.backgroundColor, other.backgroundColor)) {
             return false;
         }
-        return Objects.equals(this.modifiers, other.modifiers);
+        if(!Objects.equals(this.modifiers, other.modifiers)) {
+            return false;
+        }
+        if(!Objects.equals(this.hyperlinkUrl, other.hyperlinkUrl)) {
+            return false;
+        }
+        if(!Objects.equals(this.imageCell, other.imageCell)) {
+            return false;
+        }
+        return Objects.equals(this.promptMarker, other.promptMarker);
     }
 
     @Override
@@ -438,11 +552,21 @@ public class TextCharacter implements Serializable {
         hash = 37 * hash + (this.foregroundColor != null ? this.foregroundColor.hashCode() : 0);
         hash = 37 * hash + (this.backgroundColor != null ? this.backgroundColor.hashCode() : 0);
         hash = 37 * hash + (this.modifiers != null ? this.modifiers.hashCode() : 0);
+        hash = 37 * hash + (this.hyperlinkUrl != null ? this.hyperlinkUrl.hashCode() : 0);
+        hash = 37 * hash + (this.imageCell != null ? this.imageCell.hashCode() : 0);
+        hash = 37 * hash + (this.promptMarker != null ? this.promptMarker.hashCode() : 0);
         return hash;
     }
 
     @Override
     public String toString() {
-        return "TextCharacter{" + "character=" + character + ", foregroundColor=" + foregroundColor + ", backgroundColor=" + backgroundColor + ", modifiers=" + modifiers + '}';
+        return "TextCharacter{" + "character=" + character
+                + ", foregroundColor=" + foregroundColor
+                + ", backgroundColor=" + backgroundColor
+                + ", modifiers=" + modifiers
+                + (hyperlinkUrl != null ? ", hyperlink=" + hyperlinkUrl : "")
+                + (imageCell != null ? ", image=" + imageCell : "")
+                + (promptMarker != null ? ", marker=" + promptMarker : "")
+                + '}';
     }
 }
