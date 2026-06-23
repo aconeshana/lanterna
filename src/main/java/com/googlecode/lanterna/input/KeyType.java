@@ -107,6 +107,12 @@ public enum KeyType {
      */
     FOCUS_EVENT,
     /**
+     * This value is returned when the terminal sends a CSI query response
+     * (DECRQM, DA1, DA2, XTVERSION). The response data is carried by the
+     * {@code TerminalQueryResponseKeyStroke} subclass.
+     */
+    TERMINAL_QUERY_RESPONSE,
+    /**
      * This value is returned when you try to read input and the input stream has been closed.
      */
     EOF,

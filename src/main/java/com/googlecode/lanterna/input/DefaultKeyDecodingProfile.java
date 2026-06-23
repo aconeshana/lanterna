@@ -57,7 +57,8 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
                     new BracketedPastePattern(),
                     new OSCResponsePattern(),
                     new FocusEventPattern(),
-                    new KittyKeyPattern()
+                    new KittyKeyPattern(),
+                    new TerminalQueryResponsePattern()
             }));
 
     @Override

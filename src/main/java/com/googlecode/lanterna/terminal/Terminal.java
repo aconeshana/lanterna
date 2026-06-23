@@ -449,6 +449,30 @@ public interface Terminal extends InputProvider, Closeable {
     }
 
     /**
+     * Send a DECRQM query to request the status of a DEC private mode.
+     * The terminal responds with a DECRPM sequence parsed by
+     * {@link com.googlecode.lanterna.input.TerminalQueryResponsePattern}.
+     * <p>
+     * Emits {@code ESC [ ? mode $ p}.
+     *
+     * @param mode the DEC mode number (e.g., 2026 for synchronized output,
+     *             2004 for bracketed paste, 1004 for focus reporting)
+     */
+    default void queryDecMode(int mode) throws IOException {
+        putString("\u001B[?" + mode + "$p");
+    }
+
+    /**
+     * Send a DA1 (primary device attributes) query. The terminal responds
+     * with its capabilities, parsed by
+     * {@link com.googlecode.lanterna.input.TerminalQueryResponsePattern}.
+     * Emits {@code ESC [ c}.
+     */
+    default void queryDeviceAttributes() throws IOException {
+        putString("\u001B[c");
+    }
+
+    /**
      * Wraps an escape sequence in tmux / GNU screen DCS passthrough so the
      * multiplexer forwards it to the outer terminal. Inner ESC bytes are
      * doubled per tmux convention. Returns the input unchanged when not
