@@ -174,7 +174,29 @@ public class DefaultVirtualTerminal extends AbstractTerminal implements VirtualT
 
     @Override
     public synchronized void putString(String string) {
-        for (TextCharacter textCharacter: TextCharacter.fromString(string, activeForegroundColor, activeBackgroundColor, activeModifiers)) {
+        // Strip ESC and other control characters before creating TextCharacters,
+        // so protocol escape sequences (OSC 8/133/1337 etc.) emitted by
+        // TerminalScreen's diff loop don't crash the virtual terminal.
+        // The virtual terminal is an in-memory mock — it doesn't interpret
+        // escape sequences, so stripping them is the correct behavior.
+        StringBuilder clean = new StringBuilder(string.length());
+        for (int i = 0; i < string.length(); i++) {
+            char c = string.charAt(i);
+            if (c == '') {
+                // Skip ESC and the following character (part of escape sequence)
+                i++; // skip next char (e.g., ']', '[', '\\')
+                // Also skip any additional chars until we hit a letter (CSI/OSC terminator)
+                while (i + 1 < string.length() &&
+                       !Character.isLetter(string.charAt(i + 1)) &&
+                       string.charAt(i + 1) != '\\' &&
+                       string.charAt(i + 1) != '') {
+                    i++;
+                }
+            } else if (!Character.isISOControl(c)) {
+                clean.append(c);
+            }
+        }
+        for (TextCharacter textCharacter: TextCharacter.fromString(clean.toString(), activeForegroundColor, activeBackgroundColor, activeModifiers)) {
             putCharacter(textCharacter);
         }
     }
