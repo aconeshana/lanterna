@@ -143,9 +143,12 @@ public class TerminalScreen extends AbstractScreen {
         }
         // Wrap the entire refresh in DEC 2026 synchronized-output mode so the
         // terminal renders the update atomically — eliminates visible flicker
-        // on full redraws and large delta updates. Terminals without DEC 2026
-        // support silently ignore the escape sequences (no regression).
-        getTerminal().enableSynchronizedOutput();
+        // on full redraws and large delta updates. Only enable for terminals
+        // that support DEC 2026 (mirrors TS isSynchronizedOutputSupported).
+        boolean syncSupported = isSynchronizedOutputSupported();
+        if (syncSupported) {
+            getTerminal().enableSynchronizedOutput();
+        }
         try {
             if((refreshType == RefreshType.AUTOMATIC && fullRedrawHint) || refreshType == RefreshType.COMPLETE) {
                 refreshFull();
@@ -180,7 +183,9 @@ public class TerminalScreen extends AbstractScreen {
                 getTerminal().setCursorVisible(false);
             }
         } finally {
-            getTerminal().disableSynchronizedOutput();
+            if (syncSupported) {
+                getTerminal().disableSynchronizedOutput();
+            }
         }
         getTerminal().flush();
     }
@@ -490,6 +495,42 @@ public class TerminalScreen extends AbstractScreen {
                 return Integer.compare(o1.getRow(), o2.getRow());
             }
         }
+    }
+
+    /**
+     * Check if the terminal supports DEC 2026 (synchronized output).
+     * Mirrors TS {@code isSynchronizedOutputSupported()}: skips tmux (which
+     * chunks output and breaks atomicity), and only enables for known
+     * supporting terminals.
+     */
+    private static boolean isSynchronizedOutputSupported() {
+        // tmux parses and proxies every byte but doesn't implement DEC 2026.
+        if (System.getenv("TMUX") != null) return false;
+
+        String termProgram = System.getenv("TERM_PROGRAM");
+        String term = System.getenv("TERM");
+
+        // Modern terminals with known DEC 2026 support
+        if (termProgram != null) {
+            if (termProgram.equals("iTerm.app") || termProgram.equals("WezTerm")
+                || termProgram.equals("WarpTerminal") || termProgram.equals("ghostty")
+                || termProgram.equals("contour") || termProgram.equals("vscode")
+                || termProgram.equals("alacritty")) {
+                return true;
+            }
+        }
+
+        // kitty sets TERM=xterm-kitty or KITTY_WINDOW_ID
+        if (term != null && term.contains("kitty")) return true;
+        if (System.getenv("KITTY_WINDOW_ID") != null) return true;
+
+        // Ghostty may set TERM=xterm-ghostty without TERM_PROGRAM
+        if ("xterm-ghostty".equals(term)) return true;
+
+        // foot sets TERM=foot or TERM=foot-extra
+        if (term != null && term.startsWith("foot")) return true;
+
+        return false;
     }
 
     private static class ScrollHint {
