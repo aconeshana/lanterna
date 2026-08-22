@@ -448,6 +448,11 @@ public interface TextColor extends Serializable {
             this.colorIndex = colorIndex;
         }
 
+        /** Return the raw 0–255 palette index this color represents. */
+        public int getColorIndex() {
+            return colorIndex;
+        }
+
         @Override
         public byte[] getForegroundSGRSequence() {
             return ("38;5;" + colorIndex).getBytes();

@@ -43,10 +43,18 @@ public class MouseCharacterPattern implements CharacterPattern {
     private boolean isMouseDown = false;
     // xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
+    // xterm SGR mouse reports encode button/column/row as variable-width
+    // decimal integers (regex below already matches [0-9]+), so a report can
+    // exceed the historical 15-character assumption once column/row grow
+    // past two digits (e.g. "\x1b[<65;1234;5678M" is 16 chars). Capping too
+    // low here silently rejects the report and lets the remaining bytes leak
+    // through as ordinary character keystrokes instead of a mouse event.
+    private static final int MAX_SEQUENCE_LENGTH = 128;
+
     @Override
     public Matching match(List<Character> seq) {
         int size = seq.size();
-        if (size > 15) {
+        if (size > MAX_SEQUENCE_LENGTH) {
             return null; // nope
         }
 
@@ -117,7 +125,18 @@ public class MouseCharacterPattern implements CharacterPattern {
 
             // Get the action
             MouseActionType actionType = null;
-            if(matcher.group(4).equals("M"))
+            // Scroll wheel events are encoded with bit 6 set (item & 0x40).
+            // Buttons 4 (wheel up) and 5 (wheel down) should map to
+            // SCROLL_UP / SCROLL_DOWN, NOT CLICK_DOWN — terminals always send
+            // them with the 'M' suffix (no release event), but they are not
+            // mouse-button presses. Without this branch, callers see every
+            // wheel tick as a click on screen coordinates and react with
+            // selection / focus changes instead of scrolling.
+            if (button == 4) {
+                actionType = MouseActionType.SCROLL_UP;
+            } else if (button == 5) {
+                actionType = MouseActionType.SCROLL_DOWN;
+            } else if(matcher.group(4).equals("M"))
             {
                 actionType=MouseActionType.CLICK_DOWN;
             } else {
@@ -125,7 +144,9 @@ public class MouseCharacterPattern implements CharacterPattern {
             }
 
             // Get the move and drag actions
-            if((item & 0x20) != 0)
+            if((item & 0x20) != 0
+                    && actionType != MouseActionType.SCROLL_UP
+                    && actionType != MouseActionType.SCROLL_DOWN)
             {
                 if((item & 0x3) != 0)
                 {
@@ -135,7 +156,8 @@ public class MouseCharacterPattern implements CharacterPattern {
                 } else {
                     actionType=MouseActionType.DRAG;
                 }
-            } else {
+            } else if (actionType != MouseActionType.SCROLL_UP
+                    && actionType != MouseActionType.SCROLL_DOWN) {
                 isMouseDown=(actionType==MouseActionType.CLICK_DOWN);
             }
 

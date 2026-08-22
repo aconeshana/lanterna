@@ -367,7 +367,16 @@ public abstract class ANSITerminal extends StreamBasedTerminal implements Extend
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'0', (byte)l_or_h);
             break;
         case CLICK_RELEASE_DRAG:
+            // Mirror ink ENABLE_MOUSE_TRACKING (TS dec.ts:51-55):
+            // 1000 (normal) + 1002 (button-motion) + 1003 (any-motion) + 1006 (SGR).
+            // The 1003 part is what makes iTerm2 release special bindings
+            // (horizontal scroll = switch tabs, Cmd+click = open URL) to
+            // the application; with only 1002 iTerm2 keeps those for itself
+            // and the user gets the "horizontal scrolling does not switch
+            // tabs" toast when they swipe.
+            writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'0', (byte)l_or_h);
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'2', (byte)l_or_h);
+            writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'3', (byte)l_or_h);
             break;
         case CLICK_RELEASE_DRAG_MOVE:
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'3', (byte)l_or_h);

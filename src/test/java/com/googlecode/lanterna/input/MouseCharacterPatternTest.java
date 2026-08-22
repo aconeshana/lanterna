@@ -1,0 +1,76 @@
+package com.googlecode.lanterna.input;
+
+import com.googlecode.lanterna.TerminalPosition;
+import org.junit.Test;
+
+import java.io.StringReader;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+public class MouseCharacterPatternTest {
+
+    private static final char ESC = '';
+
+    @Test
+    public void decodesClickReleaseDragMoveAndWheelWithoutLeakingCharacters() throws Exception {
+        List<ExpectedMouse> expected = Arrays.asList(
+            new ExpectedMouse(ESC + "[<0;112;22M", MouseActionType.CLICK_DOWN, 111, 21),
+            new ExpectedMouse(ESC + "[<32;113;23M", MouseActionType.DRAG, 112, 22),
+            new ExpectedMouse(ESC + "[<0;113;23m", MouseActionType.CLICK_RELEASE, 112, 22),
+            new ExpectedMouse(ESC + "[<35;114;24M", MouseActionType.MOVE, 113, 23),
+            new ExpectedMouse(ESC + "[<64;112;22M", MouseActionType.SCROLL_UP, 111, 21),
+            new ExpectedMouse(ESC + "[<65;112;22M", MouseActionType.SCROLL_DOWN, 111, 21));
+
+        StringBuilder input = new StringBuilder();
+        for (ExpectedMouse item : expected) {
+            input.append(item.sequence);
+        }
+        InputDecoder decoder = decoderFor(input.toString());
+
+        for (ExpectedMouse item : expected) {
+            KeyStroke keyStroke = decoder.getNextCharacter(true);
+            assertTrue(item.sequence, keyStroke instanceof MouseAction);
+            MouseAction action = (MouseAction) keyStroke;
+            assertEquals(item.sequence, item.actionType, action.getActionType());
+            assertEquals(item.sequence, new TerminalPosition(item.column, item.row), action.getPosition());
+        }
+        assertEquals(KeyType.EOF, decoder.getNextCharacter(true).getKeyType());
+    }
+
+    @Test
+    public void decodesSgrMouseCoordinatesBeyondTheOldFifteenCharacterLimit() throws Exception {
+        InputDecoder decoder = decoderFor(ESC + "[<65;1234;5678M");
+
+        KeyStroke keyStroke = decoder.getNextCharacter(true);
+        assertTrue(keyStroke instanceof MouseAction);
+        MouseAction action = (MouseAction) keyStroke;
+
+        assertEquals(MouseActionType.SCROLL_DOWN, action.getActionType());
+        assertEquals(new TerminalPosition(1233, 5677), action.getPosition());
+        assertEquals(KeyType.EOF, decoder.getNextCharacter(true).getKeyType());
+    }
+
+    private static InputDecoder decoderFor(String input) {
+        InputDecoder decoder = new InputDecoder(new StringReader(input));
+        decoder.addProfile(new DefaultKeyDecodingProfile());
+        decoder.setTimeoutUnits(0);
+        return decoder;
+    }
+
+    private static final class ExpectedMouse {
+        private final String sequence;
+        private final MouseActionType actionType;
+        private final int column;
+        private final int row;
+
+        private ExpectedMouse(String sequence, MouseActionType actionType, int column, int row) {
+            this.sequence = sequence;
+            this.actionType = actionType;
+            this.column = column;
+            this.row = row;
+        }
+    }
+}

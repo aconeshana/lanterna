@@ -32,6 +32,7 @@ public abstract class AbstractTextGUIThread implements TextGUIThread {
     protected final TextGUI textGUI;
     protected final Queue<Runnable> customTasks;
     protected ExceptionHandler exceptionHandler;
+    private boolean lastCycleProcessedInput;
 
     /**
      * Sets up this {@link AbstractTextGUIThread} for operations on the supplies {@link TextGUI}
@@ -74,7 +75,7 @@ public abstract class AbstractTextGUIThread implements TextGUIThread {
             throw new IllegalStateException("Calling processEventAndUpdate outside of GUI thread");
         }
         try {
-            textGUI.processInput();
+            lastCycleProcessedInput = textGUI.processInput();
             while (!customTasks.isEmpty()) {
                 Runnable r = customTasks.poll();
                 if (r != null) {
@@ -108,6 +109,11 @@ public abstract class AbstractTextGUIThread implements TextGUIThread {
             }
         }
         return true;
+    }
+
+    /** Whether the most recent event-loop cycle consumed at least one terminal input event. */
+    protected final boolean lastCycleProcessedInput() {
+        return lastCycleProcessedInput;
     }
 
     @Override

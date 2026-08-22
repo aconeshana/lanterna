@@ -138,6 +138,7 @@ public class Label extends AbstractComponent<Label> {
      */
     public synchronized Label setForegroundColor(TextColor foregroundColor) {
         this.foregroundColor = foregroundColor;
+        invalidate();
         return this;
     }
 
@@ -160,6 +161,7 @@ public class Label extends AbstractComponent<Label> {
      */
     public synchronized Label setBackgroundColor(TextColor backgroundColor) {
         this.backgroundColor = backgroundColor;
+        invalidate();
         return this;
     }
 

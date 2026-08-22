@@ -37,8 +37,19 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
             new CharacterPattern[]{
                     new BasicCharacterPattern(new KeyStroke(KeyType.ESCAPE), ESC_CODE),
                     new BasicCharacterPattern(new KeyStroke(KeyType.TAB), '\t'),
-                    new BasicCharacterPattern(new KeyStroke(KeyType.ENTER), '\n'),
-                    new BasicCharacterPattern(new KeyStroke(KeyType.ENTER), '\r', '\u0000'), //OS X
+                    // Bare LF (0x0a) = Shift+Enter. macOS terminals natively
+                    // send \r for Enter; a solitary \n typically arrives only
+                    // when the user has bound Shift+Return to "Send Text: \n"
+                    // (iTerm2 Preferences) or via an equivalent xterm setting.
+                    // Multi-line paste bytes are consumed earlier by
+                    // BracketedPastePattern so this doesn't collide.
+                    // Surfaced as ENTER with alt=true so InputPanel's existing
+                    // (isShiftDown || isAltDown) branch inserts newline.
+                    new BasicCharacterPattern(new KeyStroke(KeyType.ENTER, false, true), '\n'),
+                    // Enter now sends bare \r after we disabled icrnl in
+                    // UnixLikeTTYTerminal.canonicalMode — the legacy '\r\u0000' pair
+                    // (some OS X terminfo entries) never arrives together with icrnl off.
+                    new BasicCharacterPattern(new KeyStroke(KeyType.ENTER), '\r'),
                     new BasicCharacterPattern(new KeyStroke(KeyType.BACKSPACE), (char) 0x7f),
                     new BasicCharacterPattern(new KeyStroke(KeyType.BACKSPACE), (char) 0x08),
                     new BasicCharacterPattern(new KeyStroke(KeyType.F1), ESC_CODE, '[', '[', 'A'), //Linux
@@ -49,6 +60,7 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
 
                     new EscapeSequenceCharacterPattern(),
                     new NormalCharacterPattern(),
+                    new EscapeEnterPattern(),
                     new AltAndCharacterPattern(),
                     new CtrlAndCharacterPattern(),
                     new CtrlAltAndCharacterPattern(),

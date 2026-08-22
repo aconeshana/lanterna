@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Represents a single character with additional metadata such as colors and modifiers. This class is immutable and
@@ -44,6 +45,20 @@ public class TextCharacter implements Serializable {
 
     public static final TextCharacter DEFAULT_CHARACTER = new TextCharacter(' ', TextColor.ANSI.DEFAULT, TextColor.ANSI.DEFAULT);
 
+    /**
+     * Hot-path cache for {@link #fromCharacter(char, TextColor, TextColor, SGR...)} with no SGR
+     * modifiers. The terminal redraws the whole screen on every animation tick, so the same
+     * (char, fg, bg) tuples are created many thousand times per second; without caching, every
+     * call goes through {@code Character.toString} + {@code BreakIterator} + {@code String.intern}
+     * which saturates the GUI thread and starves the rest of the JVM.
+     *
+     * <p>Cache key is a packed {@code long}: {@code (char << 48) | (fgHash << 16) | bgHash}.
+     * Capped at 8192 entries — well above the realistic working set
+     * (printable ASCII × handful of theme colors) so eviction is rare.
+     */
+    private static final ConcurrentHashMap<Long, TextCharacter> SIMPLE_CACHE = new ConcurrentHashMap<>();
+    private static final int SIMPLE_CACHE_MAX = 8192;
+
     public static TextCharacter[] fromCharacter(char c) {
         return fromString(Character.toString(c));
     }
@@ -53,6 +68,25 @@ public class TextCharacter implements Serializable {
     }
 
     public static TextCharacter fromCharacter(char c, TextColor foregroundColor, TextColor backgroundColor, SGR... modifiers) {
+        // Fast path: no SGR modifiers + BMP char (the >99% case during redraws).
+        if (modifiers.length == 0 && c >= 0x20 && c < 0xFFFF) {
+            long key = ((long) c << 48)
+                | (((long) System.identityHashCode(foregroundColor) & 0xFFFFL) << 16)
+                | ((long) System.identityHashCode(backgroundColor) & 0xFFFFL);
+            TextCharacter cached = SIMPLE_CACHE.get(key);
+            if (cached != null
+                && cached.foregroundColor.equals(foregroundColor)
+                && cached.backgroundColor.equals(backgroundColor)
+                && cached.character.length() == 1
+                && cached.character.charAt(0) == c) {
+                return cached;
+            }
+            TextCharacter created = fromString(Character.toString(c), foregroundColor, backgroundColor, modifiers)[0];
+            if (SIMPLE_CACHE.size() < SIMPLE_CACHE_MAX) {
+                SIMPLE_CACHE.putIfAbsent(key, created);
+            }
+            return created;
+        }
         return fromString(Character.toString(c), foregroundColor, backgroundColor, modifiers)[0];
     }
 

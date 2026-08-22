@@ -90,12 +90,35 @@ public class KittyKeyPattern implements CharacterPattern {
             return null; // malformed
         }
 
-        // Extract modifiers from the modified code
-        // Kitty encoding: bit 0 = shift, bit 1 = alt, bit 2 = control
-        // Higher bits encode other modifiers (caps lock, etc.)
-        boolean shift = (modifiedCode & 1) != 0;
-        boolean alt = (modifiedCode & 2) != 0;
-        boolean ctrl = (modifiedCode & 4) != 0;
+        // Extract modifiers from the modified code.
+        // CSI-u / Kitty encoding: the transmitted value is `1 + bit_flags`,
+        // where bit_flags is: bit 0 = shift, bit 1 = alt, bit 2 = control
+        // (higher bits encode super/hyper/meta/caps-lock/num-lock). A value
+        // of 1 means "no modifier". Subtract 1 before masking to recover the
+        // actual modifier bits — without this, ctrl-only (transmitted as 5)
+        // reads back as shift+ctrl (5 & 1 = 1). Absent field (parts.length<2)
+        // defaults to 1 (no modifier).
+        int mods = Math.max(0, (parts.length >= 2 ? modifiedCode : 1) - 1);
+        boolean shift = (mods & 1) != 0;
+        boolean alt   = (mods & 2) != 0;
+        boolean ctrl  = (mods & 4) != 0;
+
+        // Map control-character keycodes to standard KeyType values so that
+        // callers can use key.getKeyType() == KeyType.ESCAPE etc. normally.
+        // Without this, keyCode=27 would be constructed as CHARACTER(' ') by
+        // KittyKeyStroke (because kittyKeyCodeToChar(27) returns null and the
+        // fallback is ' '), which breaks every ESCAPE check in handleInput().
+        switch (keyCode) {
+            case 27:  // ESC
+                return new Matching(new KeyStroke(KeyType.ESCAPE, ctrl, alt));
+            case 13:  // CR → Enter
+                return new Matching(new KeyStroke(KeyType.ENTER, ctrl, alt));
+            case 9:   // HT → Tab / Shift+Tab
+                return new Matching(new KeyStroke(shift ? KeyType.REVERSE_TAB : KeyType.TAB, ctrl, alt));
+            case 127: // DEL → Backspace
+            case 8:   // BS  → Backspace
+                return new Matching(new KeyStroke(KeyType.BACKSPACE, ctrl, alt));
+        }
 
         // Convert Kitty keycode to a character if possible
         Character ch = kittyKeyCodeToChar(keyCode, shift);

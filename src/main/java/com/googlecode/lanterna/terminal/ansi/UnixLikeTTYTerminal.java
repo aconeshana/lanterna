@@ -18,6 +18,8 @@
  */
 package com.googlecode.lanterna.terminal.ansi;
 
+import com.googlecode.lanterna.TerminalSize;
+
 import java.io.*;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -108,6 +110,51 @@ public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
         }
     }
 
+    /**
+     * Local Unix terminals already expose their dimensions through {@code stty size}; using that
+     * channel avoids the ANSI cursor-position request used by {@link ANSITerminal}, which can wait
+     * for several seconds when a terminal, multiplexer, or test PTY does not answer DSR queries.
+     * The ANSI path remains the compatibility fallback for unusual {@code stty} implementations.
+     */
+    @Override
+    protected TerminalSize findTerminalSize() throws IOException {
+        try {
+            TerminalSize size = parseSTTYSize(runSTTYCommand("size"));
+            if (size != null) {
+                return size;
+            }
+        }
+        catch (IOException ignored) {
+            // Fall through to the ANSI cursor-report query for compatibility.
+        }
+        return super.findTerminalSize();
+    }
+
+    static TerminalSize parseSTTYSize(String output) {
+        if (output == null) {
+            return null;
+        }
+        String trimmed = output.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        String[] parts = trimmed.split("\\s+");
+        if (parts.length != 2) {
+            return null;
+        }
+        try {
+            int rows = Integer.parseInt(parts[0]);
+            int columns = Integer.parseInt(parts[1]);
+            if (rows <= 0 || columns <= 0) {
+                return null;
+            }
+            return new TerminalSize(columns, rows);
+        }
+        catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     @Override
     protected void saveTerminalSettings() throws IOException {
         sttyStatusToRestore = runSTTYCommand("-g").trim();
@@ -130,6 +177,19 @@ public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
         runSTTYCommand(enabled ? "icanon" : "-icanon");
         if(!enabled) {
             runSTTYCommand("min", "1");
+            // Also disable icrnl so kernel does not translate CR -> LF on
+            // input. Without this, plain Enter (which the terminal sends as
+            // \r) and Shift+Enter (bound to Send Text \n) both arrive as LF
+            // and become indistinguishable at the KeyDecodingProfile layer.
+            runSTTYCommand("-icrnl");
+            // Also disable XON/XOFF flow control so Ctrl+S / Ctrl+Q reach the
+            // application as key strokes instead of freezing terminal output.
+            // Node's setRawMode (cfmakeraw) clears IXON the same way; without
+            // this an app-level Ctrl+S binding (e.g. "copy screenshot") can
+            // never fire. The "stty -g" snapshot taken in
+            // saveTerminalSettings restores the user's flow-control state on
+            // exit.
+            runSTTYCommand("-ixon");
         }
     }
 

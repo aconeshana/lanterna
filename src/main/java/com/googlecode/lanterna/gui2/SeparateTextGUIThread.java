@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
  * @author Martin
  */
 public class SeparateTextGUIThread extends AbstractTextGUIThread implements AsynchronousTextGUIThread {
+    private static final long MIN_FRAME_GAP_MS = 16;
     private volatile State state;
     private final Thread textGUIThread;
     private final CountDownLatch waitLatch;
@@ -104,10 +105,19 @@ public class SeparateTextGUIThread extends AbstractTextGUIThread implements Asyn
     }
 
     private void mainGUILoop() {
+        // Frame coalescing: bound the time between successive redraws so the
+        // GUI thread can't be saturated by a flood of invalidates (e.g. a
+        // spinner posting invokeLater every 80ms). Without this cap, a
+        // steady stream of dirty events keeps processEventsAndUpdate() returning
+        // true forever and the GUI thread eats a full CPU core, starving
+        // carrier threads and any worker that needs to run.
+        // 16ms ≈ 60fps, plenty for a terminal.
+        long lastRenderEndMs = 0;
         try {
             //Draw initial screen, after this only draw when the GUI is marked as invalid
             try {
                 textGUI.updateScreen();
+                lastRenderEndMs = System.currentTimeMillis();
             }
             catch(IOException e) {
                 exceptionHandler.onIOException(e);
@@ -122,6 +132,22 @@ public class SeparateTextGUIThread extends AbstractTextGUIThread implements Asyn
                             Thread.sleep(1);
                         }
                         catch(InterruptedException ignored) {}
+                    } else {
+                        // A redraw happened. Honour the frame budget: if we
+                        // just rendered, wait until MIN_FRAME_GAP_MS has
+                        // elapsed since the previous render before allowing
+                        // the next one. Any invalidates that fire during
+                        // this window are coalesced into the next frame.
+                        long now = System.currentTimeMillis();
+                        long elapsed = now - lastRenderEndMs;
+                        long delay = frameDelayMillis(lastCycleProcessedInput(), elapsed);
+                        if (delay > 0) {
+                            try {
+                                Thread.sleep(delay);
+                            }
+                            catch(InterruptedException ignored) {}
+                        }
+                        lastRenderEndMs = System.currentTimeMillis();
                     }
                 }
                 catch(EOFException e) {
@@ -152,6 +178,15 @@ public class SeparateTextGUIThread extends AbstractTextGUIThread implements Asyn
             state = State.STOPPED;
             waitLatch.countDown();
         }
+    }
+
+    /**
+     * Input-driven frames must be delivered immediately; the frame cap exists only to coalesce
+     * background invalidation floods such as spinners and progress updates.
+     */
+    static long frameDelayMillis(boolean inputProcessed, long elapsedSinceLastRenderMs) {
+        if (inputProcessed) return 0;
+        return Math.max(0, MIN_FRAME_GAP_MS - elapsedSinceLastRenderMs);
     }
 
 

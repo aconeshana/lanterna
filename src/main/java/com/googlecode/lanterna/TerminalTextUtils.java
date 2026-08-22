@@ -87,6 +87,35 @@ public class TerminalTextUtils {
         return len;
     }
 
+    // Precomputed lookup table for isCharCJK — char is 16-bit so the table is 64 KB of booleans.
+    // Avoids repeated Character.UnicodeBlock.of() calls (which do a binary-search per invocation)
+    // in hot rendering paths where every displayed character is tested on every frame.
+    private static final boolean[] CJK_LOOKUP = buildCjkLookup();
+
+    private static boolean[] buildCjkLookup() {
+        boolean[] table = new boolean[0x10000];
+        for (int i = 0; i < 0x10000; i++) {
+            char c = (char) i;
+            Character.UnicodeBlock b = Character.UnicodeBlock.of(c);
+            table[i] = (b == Character.UnicodeBlock.HIRAGANA)
+                    || (b == Character.UnicodeBlock.KATAKANA)
+                    || (b == Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS)
+                    || (b == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO)
+                    || (b == Character.UnicodeBlock.HANGUL_JAMO)
+                    || (b == Character.UnicodeBlock.HANGUL_SYLLABLES)
+                    || (b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS)
+                    || (b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A)
+                    || (b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B)
+                    || (b == Character.UnicodeBlock.CJK_COMPATIBILITY_FORMS)
+                    || (b == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS)
+                    || (b == Character.UnicodeBlock.CJK_RADICALS_SUPPLEMENT)
+                    || (b == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION)
+                    || (b == Character.UnicodeBlock.ENCLOSED_CJK_LETTERS_AND_MONTHS)
+                    || (b == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS && c < 0xFF61);
+        }
+        return table;
+    }
+
     /**
      * Given a character, is this character considered to be a CJK character?
      * Shamelessly stolen from
@@ -96,22 +125,7 @@ public class TerminalTextUtils {
      * @return {@code true} if the character is a CJK character
      */
     public static boolean isCharCJK(final char c) {
-        Character.UnicodeBlock unicodeBlock = Character.UnicodeBlock.of(c);
-        return (unicodeBlock == Character.UnicodeBlock.HIRAGANA)
-                || (unicodeBlock == Character.UnicodeBlock.KATAKANA)
-                || (unicodeBlock == Character.UnicodeBlock.KATAKANA_PHONETIC_EXTENSIONS)
-                || (unicodeBlock == Character.UnicodeBlock.HANGUL_COMPATIBILITY_JAMO)
-                || (unicodeBlock == Character.UnicodeBlock.HANGUL_JAMO)
-                || (unicodeBlock == Character.UnicodeBlock.HANGUL_SYLLABLES)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_COMPATIBILITY_FORMS)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_RADICALS_SUPPLEMENT)
-                || (unicodeBlock == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION)
-                || (unicodeBlock == Character.UnicodeBlock.ENCLOSED_CJK_LETTERS_AND_MONTHS)
-                || (unicodeBlock == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS && c < 0xFF61);    //The magic number here is the separating index between full-width and half-width
+        return CJK_LOOKUP[c];
     }
 
     /**

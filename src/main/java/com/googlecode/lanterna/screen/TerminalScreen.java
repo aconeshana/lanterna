@@ -115,13 +115,30 @@ public class TerminalScreen extends AbstractScreen {
 
     @Override
     public synchronized void startScreen() throws IOException {
+        startScreen(true);
+    }
+
+    /**
+     * Starts the screen while reusing the terminal size captured by the constructor. This is
+     * intended for the initial startup path, where querying immediately before and immediately
+     * after entering private mode duplicates potentially blocking terminal I/O. Later restarts
+     * should continue using {@link #startScreen()} so a resize that happened while suspended is
+     * observed.
+     */
+    public synchronized void startScreenWithoutTerminalSizeQuery() throws IOException {
+        startScreen(false);
+    }
+
+    private void startScreen(boolean refreshTerminalSize) throws IOException {
         if(isStarted) {
             return;
         }
 
         isStarted = true;
         getTerminal().enterPrivateMode();
-        getTerminal().getTerminalSize();
+        if(refreshTerminalSize) {
+            getTerminal().getTerminalSize();
+        }
         getTerminal().clearScreen();
         this.fullRedrawHint = true;
         TerminalPosition cursorPosition = getCursorPosition();
@@ -266,10 +283,12 @@ public class TerminalScreen extends AbstractScreen {
         TextColor currentBackgroundColor = firstScreenCharacterToUpdate.getBackgroundColor();
         getTerminal().setForegroundColor(currentForegroundColor);
         getTerminal().setBackgroundColor(currentBackgroundColor);
+        StringBuilder textRun = new StringBuilder();
         // Track OSC 8 hyperlink state across cells — close before any cursor jump
         String currentHyperlinkUrl = null;
         for(TerminalPosition position: updateMap.keySet()) {
             if(!position.equals(currentPosition)) {
+                flushTextRun(textRun);
                 if (currentHyperlinkUrl != null) {
                     getTerminal().putString(HYPERLINK_CLOSE);
                     currentHyperlinkUrl = null;
@@ -279,19 +298,23 @@ public class TerminalScreen extends AbstractScreen {
             }
             TextCharacter newCharacter = updateMap.get(position);
             if(!currentForegroundColor.equals(newCharacter.getForegroundColor())) {
+                flushTextRun(textRun);
                 getTerminal().setForegroundColor(newCharacter.getForegroundColor());
                 currentForegroundColor = newCharacter.getForegroundColor();
             }
             if(!currentBackgroundColor.equals(newCharacter.getBackgroundColor())) {
+                flushTextRun(textRun);
                 getTerminal().setBackgroundColor(newCharacter.getBackgroundColor());
                 currentBackgroundColor = newCharacter.getBackgroundColor();
             }
             for(SGR sgr: SGR.values()) {
                 if(currentSGR.contains(sgr) && !newCharacter.getModifiers().contains(sgr)) {
+                    flushTextRun(textRun);
                     getTerminal().disableSGR(sgr);
                     currentSGR.remove(sgr);
                 }
                 else if(!currentSGR.contains(sgr) && newCharacter.getModifiers().contains(sgr)) {
+                    flushTextRun(textRun);
                     getTerminal().enableSGR(sgr);
                     currentSGR.add(sgr);
                 }
@@ -299,6 +322,7 @@ public class TerminalScreen extends AbstractScreen {
             // OSC 8 hyperlink transition
             String newUrl = newCharacter.getHyperlinkUrl();
             if (!java.util.Objects.equals(currentHyperlinkUrl, newUrl)) {
+                flushTextRun(textRun);
                 if (currentHyperlinkUrl != null) {
                     getTerminal().putString(HYPERLINK_CLOSE);
                 }
@@ -309,13 +333,15 @@ public class TerminalScreen extends AbstractScreen {
             }
             // OSC 133 prompt marker (one-shot at this cell)
             if (newCharacter.getPromptMarker() != null) {
+                flushTextRun(textRun);
                 getTerminal().putString(newCharacter.getPromptMarker().escapeSequence());
             }
             // OSC 1337 inline image (one-shot at this cell)
             if (newCharacter.getImageCell() != null) {
+                flushTextRun(textRun);
                 getTerminal().putString(newCharacter.getImageCell().escapeSequence());
             }
-            getTerminal().putString(newCharacter.getCharacterString());
+            textRun.append(newCharacter.getCharacterString());
             if(newCharacter.isDoubleWidth()) {
                 // Double-width characters advances two columns
                 currentPosition = currentPosition.withRelativeColumn(2);
@@ -325,6 +351,7 @@ public class TerminalScreen extends AbstractScreen {
                 currentPosition = currentPosition.withRelativeColumn(1);
             }
         }
+        flushTextRun(textRun);
         // Close any dangling hyperlink at end of refresh
         if (currentHyperlinkUrl != null) {
             getTerminal().putString(HYPERLINK_CLOSE);
@@ -341,9 +368,11 @@ public class TerminalScreen extends AbstractScreen {
         EnumSet<SGR> currentSGR = EnumSet.noneOf(SGR.class);
         TextColor currentForegroundColor = TextColor.ANSI.DEFAULT;
         TextColor currentBackgroundColor = TextColor.ANSI.DEFAULT;
+        StringBuilder textRun = new StringBuilder();
         // Track OSC 8 hyperlink state across the full redraw
         String currentHyperlinkUrl = null;
         for(int y = 0; y < getTerminalSize().getRows(); y++) {
+            flushTextRun(textRun);
             // Close any open hyperlink before jumping to a new row
             if (currentHyperlinkUrl != null) {
                 getTerminal().putString(HYPERLINK_CLOSE);
@@ -354,6 +383,7 @@ public class TerminalScreen extends AbstractScreen {
             for(int x = 0; x < getTerminalSize().getColumns(); x++) {
                 TextCharacter newCharacter = getBackBuffer().getCharacterAt(x, y);
                 if(newCharacter.equals(DEFAULT_CHARACTER)) {
+                    flushTextRun(textRun);
                     // Closing hyperlink on a gap keeps terminal state clean
                     if (currentHyperlinkUrl != null) {
                         getTerminal().putString(HYPERLINK_CLOSE);
@@ -363,24 +393,29 @@ public class TerminalScreen extends AbstractScreen {
                 }
 
                 if(!currentForegroundColor.equals(newCharacter.getForegroundColor())) {
+                    flushTextRun(textRun);
                     getTerminal().setForegroundColor(newCharacter.getForegroundColor());
                     currentForegroundColor = newCharacter.getForegroundColor();
                 }
                 if(!currentBackgroundColor.equals(newCharacter.getBackgroundColor())) {
+                    flushTextRun(textRun);
                     getTerminal().setBackgroundColor(newCharacter.getBackgroundColor());
                     currentBackgroundColor = newCharacter.getBackgroundColor();
                 }
                 for(SGR sgr: SGR.values()) {
                     if(currentSGR.contains(sgr) && !newCharacter.getModifiers().contains(sgr)) {
+                        flushTextRun(textRun);
                         getTerminal().disableSGR(sgr);
                         currentSGR.remove(sgr);
                     }
                     else if(!currentSGR.contains(sgr) && newCharacter.getModifiers().contains(sgr)) {
+                        flushTextRun(textRun);
                         getTerminal().enableSGR(sgr);
                         currentSGR.add(sgr);
                     }
                 }
                 if(currentColumn != x) {
+                    flushTextRun(textRun);
                     if (currentHyperlinkUrl != null) {
                         getTerminal().putString(HYPERLINK_CLOSE);
                         currentHyperlinkUrl = null;
@@ -391,6 +426,7 @@ public class TerminalScreen extends AbstractScreen {
                 // OSC 8 hyperlink transition
                 String newUrl = newCharacter.getHyperlinkUrl();
                 if (!java.util.Objects.equals(currentHyperlinkUrl, newUrl)) {
+                    flushTextRun(textRun);
                     if (currentHyperlinkUrl != null) {
                         getTerminal().putString(HYPERLINK_CLOSE);
                     }
@@ -401,13 +437,15 @@ public class TerminalScreen extends AbstractScreen {
                 }
                 // OSC 133 prompt marker (one-shot at this cell)
                 if (newCharacter.getPromptMarker() != null) {
+                    flushTextRun(textRun);
                     getTerminal().putString(newCharacter.getPromptMarker().escapeSequence());
                 }
                 // OSC 1337 inline image (one-shot at this cell)
                 if (newCharacter.getImageCell() != null) {
+                    flushTextRun(textRun);
                     getTerminal().putString(newCharacter.getImageCell().escapeSequence());
                 }
-                getTerminal().putString(newCharacter.getCharacterString());
+                textRun.append(newCharacter.getCharacterString());
                 if(newCharacter.isDoubleWidth()) {
                     // Double-width characters take up two columns
                     currentColumn += 2;
@@ -419,9 +457,17 @@ public class TerminalScreen extends AbstractScreen {
                 }
             }
         }
+        flushTextRun(textRun);
         // Close any dangling hyperlink at end of full redraw
         if (currentHyperlinkUrl != null) {
             getTerminal().putString(HYPERLINK_CLOSE);
+        }
+    }
+
+    private void flushTextRun(StringBuilder textRun) throws IOException {
+        if (!textRun.isEmpty()) {
+            getTerminal().putString(textRun.toString());
+            textRun.setLength(0);
         }
     }
     
