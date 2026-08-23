@@ -374,6 +374,10 @@ public abstract class ANSITerminal extends StreamBasedTerminal implements Extend
             // the application; with only 1002 iTerm2 keeps those for itself
             // and the user gets the "horizontal scrolling does not switch
             // tabs" toast when they swipe.
+            // Side effect: because 1003 is on, this mode also reports button-less
+            // motion, making it behave like CLICK_RELEASE_DRAG_MOVE. Documented on
+            // the MouseCaptureMode enum — callers wanting drag-only events must
+            // filter on MouseActionType rather than on the capture mode.
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'0', (byte)l_or_h);
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'2', (byte)l_or_h);
             writeCSISequenceToTerminal((byte)'?', (byte)'1', (byte)'0', (byte)'0', (byte)'3', (byte)l_or_h);

@@ -46,11 +46,21 @@ public enum MouseCaptureMode {
     /**
      * Mouse clicks are captured both on down and up and if the mouse if moved while holding down one of the button, a
      * drag event is generated.
+     *
+     * <p><strong>Behaves identically to {@link #CLICK_RELEASE_DRAG_MOVE} in this fork.</strong>
+     * {@code ANSITerminal} enables {@code ?1000}, {@code ?1002} <em>and</em> {@code ?1003} for this
+     * mode, mirroring ink's ENABLE_MOUSE_TRACKING (TS {@code src/ink/termio/dec.ts}), because several
+     * terminals only report drag reliably once any-motion tracking is on. The consequence is that
+     * button-less motion events are delivered here too, so callers must not rely on this mode to
+     * filter out {@link com.googlecode.lanterna.input.MouseActionType#MOVE}. Filter on the action
+     * type instead.
      */
     CLICK_RELEASE_DRAG,
     /**
      * Mouse clicks are captured both on down and up and also all mouse movements, no matter if any button is held down
      * or not.
+     *
+     * @see #CLICK_RELEASE_DRAG which currently enables the same set of DEC private modes
      */
     CLICK_RELEASE_DRAG_MOVE,
     /**
