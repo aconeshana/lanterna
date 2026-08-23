@@ -27,6 +27,18 @@ public enum MouseActionType {
     SCROLL_UP,
     SCROLL_DOWN,
     /**
+     * Horizontal wheel tilt / trackpad swipe towards the left. Reported by xterm-style
+     * terminals as SGR button 66; distinct from {@link #SCROLL_UP} so listeners that only
+     * handle vertical scrolling are not fed bogus vertical ticks.
+     */
+    SCROLL_LEFT,
+    /**
+     * Horizontal wheel tilt / trackpad swipe towards the right, SGR button 67.
+     *
+     * @see #SCROLL_LEFT
+     */
+    SCROLL_RIGHT,
+    /**
      * Moving the mouse cursor on the screen while holding a button down
      */
     DRAG,

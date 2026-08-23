@@ -46,10 +46,13 @@ public class MouseCharacterPattern implements CharacterPattern {
     // xterm SGR mouse reports encode button/column/row as variable-width
     // decimal integers (regex below already matches [0-9]+), so a report can
     // exceed the historical 15-character assumption once column/row grow
-    // past two digits (e.g. "\x1b[<65;1234;5678M" is 16 chars). Capping too
+    // past two digits (e.g. "[<65;1234;5678M" is 16 chars). Capping too
     // low here silently rejects the report and lets the remaining bytes leak
     // through as ordinary character keystrokes instead of a mouse event.
-    private static final int MAX_SEQUENCE_LENGTH = 128;
+    // The worst realistic report is ESC [ < + 3-digit button + ';' + 5-digit
+    // column + ';' + 5-digit row + 'm'/'M' = 19 characters; 24 leaves headroom
+    // without keeping a runaway partial match alive for long.
+    private static final int MAX_SEQUENCE_LENGTH = 24;
 
     @Override
     public Matching match(List<Character> seq) {
@@ -94,13 +97,11 @@ public class MouseCharacterPattern implements CharacterPattern {
             int item=Integer.valueOf(matcher.group(1));
             int button = 0;
 
-            // if the 6th bit is set, then it's a wheel event then we check the 1st bit to know if it's up or down
+            // if the 6th bit is set it's a wheel event; the low two bits then encode
+            // the direction (0 = up, 1 = down, 2 = left, 3 = right) rather than a
+            // button index, giving buttons 4..7.
             if((item & 0x40) != 0) {
-                if((item & 0x1) == 0) {
-                    button = 4;
-                } else  {
-                    button = 5;
-                }
+                button = 4 + (item & 0x3);
             } else if((item & 0x2) != 0) {
                 button = 3;
             } else if((item & 0x1) != 0) {
@@ -126,27 +127,30 @@ public class MouseCharacterPattern implements CharacterPattern {
             // Get the action
             MouseActionType actionType = null;
             // Scroll wheel events are encoded with bit 6 set (item & 0x40).
-            // Buttons 4 (wheel up) and 5 (wheel down) should map to
-            // SCROLL_UP / SCROLL_DOWN, NOT CLICK_DOWN — terminals always send
-            // them with the 'M' suffix (no release event), but they are not
-            // mouse-button presses. Without this branch, callers see every
-            // wheel tick as a click on screen coordinates and react with
-            // selection / focus changes instead of scrolling.
-            if (button == 4) {
-                actionType = MouseActionType.SCROLL_UP;
-            } else if (button == 5) {
-                actionType = MouseActionType.SCROLL_DOWN;
-            } else if(matcher.group(4).equals("M"))
-            {
-                actionType=MouseActionType.CLICK_DOWN;
-            } else {
-                actionType=MouseActionType.CLICK_RELEASE;
+            // Buttons 4..7 (wheel up/down/left/right) map to the SCROLL_* action
+            // types, NOT CLICK_DOWN — terminals always send them with the 'M'
+            // suffix (no release event), but they are not mouse-button presses.
+            // Without this branch, callers see every wheel tick as a click on
+            // screen coordinates and react with selection / focus changes
+            // instead of scrolling. Horizontal ticks in particular must not be
+            // reported as SCROLL_UP / SCROLL_DOWN, or a sideways trackpad swipe
+            // silently scrolls the viewport vertically.
+            boolean scrollEvent = true;
+            switch (button) {
+                case 4:  actionType = MouseActionType.SCROLL_UP; break;
+                case 5:  actionType = MouseActionType.SCROLL_DOWN; break;
+                case 6:  actionType = MouseActionType.SCROLL_LEFT; break;
+                case 7:  actionType = MouseActionType.SCROLL_RIGHT; break;
+                default:
+                    scrollEvent = false;
+                    actionType = matcher.group(4).equals("M")
+                            ? MouseActionType.CLICK_DOWN
+                            : MouseActionType.CLICK_RELEASE;
+                    break;
             }
 
             // Get the move and drag actions
-            if((item & 0x20) != 0
-                    && actionType != MouseActionType.SCROLL_UP
-                    && actionType != MouseActionType.SCROLL_DOWN)
+            if(!scrollEvent && (item & 0x20) != 0)
             {
                 if((item & 0x3) != 0)
                 {
@@ -156,8 +160,7 @@ public class MouseCharacterPattern implements CharacterPattern {
                 } else {
                     actionType=MouseActionType.DRAG;
                 }
-            } else if (actionType != MouseActionType.SCROLL_UP
-                    && actionType != MouseActionType.SCROLL_DOWN) {
+            } else if (!scrollEvent) {
                 isMouseDown=(actionType==MouseActionType.CLICK_DOWN);
             }
 
