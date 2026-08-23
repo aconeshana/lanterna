@@ -48,12 +48,14 @@ public class TerminalScreen extends AbstractScreen {
     // Format: ESC ] 8 ; ; URL ESC \   (open)   ESC ] 8 ; ; ESC \   (close)
     // TS uses BEL (\u0007) as OSC 8 terminator — more widely supported than ST
     private static final String HYPERLINK_OPEN_PREFIX = "\u001B]8;;";
-    // TS osc() uses ST (ESC \\u001B\\\\) for Kitty, BEL (\\u0007) for others.
+    // TS osc() uses ST for Kitty and BEL for others. ST is ESC followed by a
+    // SINGLE backslash (TS src/ink/termio/osc.ts:15), so the Java literal needs
+    // exactly one escaped backslash - two would emit a stray literal backslash.
     // Detect Kitty at runtime and use appropriate terminator.
     private static final String HYPERLINK_OPEN_SUFFIX_BEL = "\u0007";
-    private static final String HYPERLINK_OPEN_SUFFIX_ST  = "\u001B\\\\";
+    private static final String HYPERLINK_OPEN_SUFFIX_ST  = "\u001B\\";
     private static final String HYPERLINK_CLOSE_BEL = "\u001B]8;;\u0007";
-    private static final String HYPERLINK_CLOSE_ST  = "\u001B]8;;\u001B\\\\";
+    private static final String HYPERLINK_CLOSE_ST  = "\u001B]8;;\u001B\\";
     private static final String HYPERLINK_OPEN_SUFFIX;
     private static final String HYPERLINK_CLOSE;
     static {
