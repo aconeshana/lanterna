@@ -21,6 +21,11 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- release (not just source/target) so javac enforces the Java 8 API boundary via
+             ct.sym. With source/target alone, a modern local JDK happily compiles calls to
+             APIs that do not exist in 8 (e.g. CharSequence.isEmpty(), added in 15) and the
+             breakage only surfaces on a build machine running an older JDK. -->
+        <maven.compiler.release>8</maven.compiler.release>
     </properties>
 
     <scm>

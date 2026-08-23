@@ -14,6 +14,13 @@ import static org.junit.Assert.assertTrue;
 
 public class TerminalScreenStartupTest {
 
+    // String.repeat is Java 11; this module targets 8 (see maven.compiler.release in pom.xml).
+    private static String repeat(char c, int count) {
+        char[] chars = new char[count];
+        java.util.Arrays.fill(chars, c);
+        return new String(chars);
+    }
+
     @Test
     public void initialStartCanReuseTheSizeAlreadyCapturedByTheConstructor() throws IOException {
         CountingTerminal terminal = new CountingTerminal();
@@ -33,7 +40,7 @@ public class TerminalScreenStartupTest {
         TerminalScreen screen = new TerminalScreen(terminal);
         screen.startScreenWithoutTerminalSizeQuery();
         terminal.putStringCalls = 0;
-        screen.newTextGraphics().putString(0, 0, "x".repeat(60));
+        screen.newTextGraphics().putString(0, 0, repeat('x', 60));
 
         screen.refresh(Screen.RefreshType.COMPLETE);
 

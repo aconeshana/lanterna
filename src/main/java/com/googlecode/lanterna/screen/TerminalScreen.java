@@ -466,8 +466,10 @@ public class TerminalScreen extends AbstractScreen {
         }
     }
 
+    // length() > 0 rather than isEmpty(): CharSequence.isEmpty() is a Java 15 API and this
+    // module still compiles against Java 8/9 (see maven.compiler.source and jitpack.yml).
     private void flushTextRun(StringBuilder textRun) throws IOException {
-        if (!textRun.isEmpty()) {
+        if (textRun.length() > 0) {
             getTerminal().putString(textRun.toString());
             textRun.setLength(0);
         }
