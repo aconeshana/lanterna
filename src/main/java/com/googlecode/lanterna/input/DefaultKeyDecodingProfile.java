@@ -60,10 +60,16 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
 
                     new EscapeSequenceCharacterPattern(),
                     new NormalCharacterPattern(),
-                    new EscapeEnterPattern(),
                     new AltAndCharacterPattern(),
                     new CtrlAndCharacterPattern(),
                     new CtrlAltAndCharacterPattern(),
+                    // Registration order is priority order: InputDecoder.getBestMatch()
+                    // walks every pattern and overwrites bestMatch on each full match
+                    // without breaking, so the LAST full match wins. EscapeEnterPattern
+                    // must therefore come after CtrlAltAndCharacterPattern, which also
+                    // fully matches ESC+CR / ESC+LF (as ctrl+alt+m / ctrl+alt+j) and
+                    // would otherwise shadow it entirely.
+                    new EscapeEnterPattern(),
                     new ScreenInfoCharacterPattern(),
                     new MouseCharacterPattern(),
                     new BracketedPastePattern(),
