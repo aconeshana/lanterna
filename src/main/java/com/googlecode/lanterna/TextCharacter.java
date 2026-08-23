@@ -52,7 +52,11 @@ public class TextCharacter implements Serializable {
      * call goes through {@code Character.toString} + {@code BreakIterator} + {@code String.intern}
      * which saturates the GUI thread and starves the rest of the JVM.
      *
-     * <p>Cache key is a packed {@code long}: {@code (char << 48) | (fgHash << 16) | bgHash}.
+     * <p>Cache key is a packed {@code long}: {@code (char << 48) | (fgHash << 16) | bgHash},
+     * built from the colors' value-based {@link Object#hashCode()} so that two equal-but-distinct
+     * {@link TextColor} instances share an entry. Sixteen bits per color means keys can still
+     * collide, so every hit is validated field-by-field and a colliding miss <em>overwrites</em>
+     * the entry rather than leaving the loser permanently uncacheable.
      * Capped at 8192 entries — well above the realistic working set
      * (printable ASCII × handful of theme colors) so eviction is rare.
      */
@@ -71,8 +75,8 @@ public class TextCharacter implements Serializable {
         // Fast path: no SGR modifiers + BMP char (the >99% case during redraws).
         if (modifiers.length == 0 && c >= 0x20 && c < 0xFFFF) {
             long key = ((long) c << 48)
-                | (((long) System.identityHashCode(foregroundColor) & 0xFFFFL) << 16)
-                | ((long) System.identityHashCode(backgroundColor) & 0xFFFFL);
+                | (((long) foregroundColor.hashCode() & 0xFFFFL) << 16)
+                | ((long) backgroundColor.hashCode() & 0xFFFFL);
             TextCharacter cached = SIMPLE_CACHE.get(key);
             if (cached != null
                 && cached.foregroundColor.equals(foregroundColor)
@@ -82,8 +86,12 @@ public class TextCharacter implements Serializable {
                 return cached;
             }
             TextCharacter created = fromString(Character.toString(c), foregroundColor, backgroundColor, modifiers)[0];
-            if (SIMPLE_CACHE.size() < SIMPLE_CACHE_MAX) {
-                SIMPLE_CACHE.putIfAbsent(key, created);
+            // A non-null `cached` here means the key collided: the slot is already taken by a
+            // different tuple. Replace it instead of calling putIfAbsent, which would keep the
+            // incumbent forever and make this tuple a permanent cache miss. Replacing does not
+            // grow the map, so it is allowed even once the cap is reached.
+            if (cached != null || SIMPLE_CACHE.size() < SIMPLE_CACHE_MAX) {
+                SIMPLE_CACHE.put(key, created);
             }
             return created;
         }
