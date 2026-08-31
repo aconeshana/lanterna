@@ -122,9 +122,37 @@ public class SimpleTheme implements Theme {
     public synchronized Definition getDefinition(Class<?> clazz) {
         Definition definition = overrideDefinitions.get(clazz);
         if(definition == null) {
-            return getDefaultDefinition();
+            // Fall back through the class hierarchy so an override registered for a
+            // superclass (e.g. TextBox) also applies to subclass instances such as
+            // the anonymous PromptTextBox nested inside Claude Code's InputPanel.
+            // Walk up the superclass chain first (preferring the nearest override),
+            // then check interfaces. Only used when no exact-class override exists,
+            // so components that deliberately rely on the default definition are
+            // unaffected unless an ancestor explicitly registered an override.
+            definition = findInheritedDefinition(clazz);
+            if(definition == null) {
+                return getDefaultDefinition();
+            }
         }
         return definition;
+    }
+
+    private synchronized Definition findInheritedDefinition(Class<?> clazz) {
+        Class<?> superClass = clazz.getSuperclass();
+        while(superClass != null && superClass != Object.class) {
+            Definition definition = overrideDefinitions.get(superClass);
+            if(definition != null) {
+                return definition;
+            }
+            superClass = superClass.getSuperclass();
+        }
+        for(Class<?> iface : clazz.getInterfaces()) {
+            Definition definition = findInheritedDefinition(iface);
+            if(definition != null) {
+                return definition;
+            }
+        }
+        return null;
     }
 
     /**
