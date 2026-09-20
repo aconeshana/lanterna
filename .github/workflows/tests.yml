@@ -1,0 +1,39 @@
+name: tests
+
+# The fork is consumed from JitPack, which builds tags with tests skipped, so
+# nothing downstream would notice a red suite. This is the record of which
+# commits and tags were actually green; the pre-push hook in hooks/ is what
+# stops a broken one from being published in the first place.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Matches the JDK the fork is developed against. The build targets
+      # release 8 with a release 9 module-info, both of which 17 still accepts.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run the test suite
+        run: mvn -B test
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore

@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# Refuses to push a fork that does not pass its own tests.
+#
+# This fork is consumed by tag: JitPack builds whatever a tag points at, with
+# tests skipped, and the downstream project pins that tag. A red suite therefore
+# reaches production unnoticed, and the only way back is to publish another tag
+# -- which is how this fork ended up with eight of them.
+#
+# Not installed by cloning. Each clone has to opt in once:
+#
+#     git config core.hooksPath hooks
+#
+# Skipped for branch deletions, which have nothing to test.
+
+set -e
+
+if [ -n "$LANTERNA_SKIP_PUSH_TESTS" ]; then
+    echo "pre-push: tests skipped by LANTERNA_SKIP_PUSH_TESTS" >&2
+    exit 0
+fi
+
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
+pushes_something=false
+pushes_tag=false
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    pushes_something=true
+    case "$remote_ref" in
+        refs/tags/*) pushes_tag=true ;;
+    esac
+done
+
+if [ "$pushes_something" = false ]; then
+    exit 0
+fi
+
+if [ -n "$(git status --porcelain)" ]; then
+    echo "pre-push: WARNING - the working tree is dirty, so these tests cover it" >&2
+    echo "          rather than the commit being pushed." >&2
+    if [ "$pushes_tag" = true ]; then
+        echo "pre-push: refusing to tag from a dirty tree - a published tag has to" >&2
+        echo "          mean exactly what was tested. Commit or clean up first." >&2
+        exit 1
+    fi
+fi
+
+echo "pre-push: running the test suite..." >&2
+if ! mvn -q -B test; then
+    echo "" >&2
+    echo "pre-push: tests failed - push refused." >&2
+    echo "          A tag published from here would ship a broken fork to JitPack," >&2
+    echo "          which builds with tests skipped and will not catch it." >&2
+    echo "          Override with LANTERNA_SKIP_PUSH_TESTS=1 only when you know why." >&2
+    exit 1
+fi
+
+echo "pre-push: tests pass." >&2
