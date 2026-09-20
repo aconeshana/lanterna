@@ -107,7 +107,12 @@ public class ScreenTextGraphicsTest {
 
     @Test
     public void testPositionPastRootGraphicsSize() throws Exception {
-        TerminalPosition outOfRange = new TerminalPosition(200, 10);
+        // Derive the out-of-range column from the graphics itself. createHeadlessTerminal()
+        // hands back a real UnixTerminal, which reports the actual window and ignores the
+        // setInitialTerminalSize hint above, so any hard-coded column is really a bet on how
+        // wide the developer's terminal happens to be.
+        TerminalPosition outOfRange =
+                new TerminalPosition(textGraphics.getSize().getColumns(), 10);
         
         TerminalPosition toScreen = textGraphics.toScreenPosition(outOfRange);
         assertNull(toScreen);
