@@ -231,7 +231,12 @@ public abstract class AbstractInteractableComponent<T extends AbstractInteractab
             isMouseActivation = action.getActionType() == MouseActionType.CLICK_DOWN;
         }
         
-        return isFocused() && isMouseActivation;
+        // Deliberately not gated on isFocused(): a click carries its own target, so the
+        // component under the pointer is the one the user meant regardless of where focus
+        // happened to be. The keyboard path above does need the guard — handleAccelerator
+        // feeds strokes to unfocused buttons, and without it a single space would fire
+        // every button in the window.
+        return isMouseActivation;
     }
     
     public boolean isActivationStroke(KeyStroke keyStroke) {
