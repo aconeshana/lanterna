@@ -110,6 +110,34 @@ public abstract class UnixLikeTerminal extends ANSITerminal {
         super.close();
     }
 
+    /**
+     * Re-applies the terminal settings {@link #acquire()} installed, for an application
+     * that let the terminal go and has just taken it back — SIGTSTP/SIGCONT job control
+     * being the case that matters.
+     * <p>
+     * While the process is stopped the shell configures the tty to suit itself, and
+     * nothing puts it back: {@code enterPrivateMode} only writes escape sequences, and
+     * {@code acquire} runs once from the constructor. Without this the application resumes
+     * onto a terminal that echoes, buffers by line, and re-interprets the control
+     * characters it wanted to read itself.
+     * <p>
+     * Deliberately does not re-run {@link #saveTerminalSettings()}: the snapshot taken at
+     * acquire time is the user's own configuration, and overwriting it with whatever the
+     * shell left behind would make the restore on exit hand back the wrong terminal.
+     *
+     * @throws IOException If there was an I/O error
+     */
+    public void reapplyTerminalSettings() throws IOException {
+        if(!acquired) {
+            return;
+        }
+        canonicalMode(false);
+        keyEchoEnabled(false);
+        if(catchSpecialCharacters) {
+            keyStrokeSignalsEnabled(false);
+        }
+    }
+
     @Override
     public KeyStroke pollInput() throws IOException {
         //Check if we have ctrl+c coming

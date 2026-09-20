@@ -44,11 +44,6 @@ import java.util.List;
  */
 public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
 
-    // VDSUSP ("dsusp", delayed suspend) is a BSD control character. Linux termios has no
-    // such field and its stty rejects the name, so only ask for it where it exists.
-    private static final boolean HAS_DELAYED_SUSPEND =
-            !System.getProperty("os.name", "").toLowerCase().contains("linux");
-
     private final File ttyDev;
     private String sttyStatusToRestore;
 
@@ -195,31 +190,29 @@ public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
             // saveTerminalSettings restores the user's flow-control state on
             // exit.
             runSTTYCommand("-ixon");
+            // The remaining cfmakeraw input flags. IEXTEN is the one that bites:
+            // it keeps VLNEXT alive, so the tty swallows Ctrl+V and passes the
+            // following byte through literally. An application binding for
+            // Ctrl+V (paste an image, preview a session) then sees a bare 'v'
+            // with no ctrl modifier and can never fire. INLCR and BRKINT are
+            // cleared for the same reason as ICRNL: the kernel must not rewrite
+            // or synthesise input the key decoder is trying to classify.
+            runSTTYCommand("-iexten");
+            runSTTYCommand("-inlcr");
+            runSTTYCommand("-brkint");
         }
     }
 
     @Override
     protected void keyStrokeSignalsEnabled(boolean enabled) throws IOException {
-        if(enabled) {
-            runSTTYCommand("intr", "^C");
-            runSTTYCommand("susp", "^Z");
-            if(HAS_DELAYED_SUSPEND) {
-                runSTTYCommand("dsusp", "^Y");
-            }
-        }
-        else {
-            runSTTYCommand("intr", "undef");
-            // The suspend characters belong to the application too. A full-screen UI binds
-            // Ctrl+Z and Ctrl+Y itself (undo / yank), and letting the kernel turn them into
-            // SIGTSTP suspends the process with the alternate screen and mouse reporting
-            // still enabled, which leaves the terminal unusable. Node's setRawMode
-            // (cfmakeraw) clears ISIG for the same reason. The "stty -g" snapshot taken in
-            // saveTerminalSettings restores the user's own characters on exit.
-            runSTTYCommand("susp", "undef");
-            if(HAS_DELAYED_SUSPEND) {
-                runSTTYCommand("dsusp", "undef");
-            }
-        }
+        // Toggle ISIG rather than blanking intr/susp/dsusp one by one. Undefining
+        // the characters reaches the same end for the three we know about, but it
+        // edits the user's terminal instead of switching off the feature that
+        // consumes them, and it silently leaves behind anything not on the list.
+        // cfmakeraw - which is what every other full-screen terminal application
+        // applies here - clears the flag. Doing the same keeps the characters at
+        // their own values, so they come back by themselves when ISIG returns.
+        runSTTYCommand(enabled ? "isig" : "-isig");
     }
 
     protected String runSTTYCommand(String... parameters) throws IOException {
