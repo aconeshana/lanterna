@@ -44,6 +44,11 @@ import java.util.List;
  */
 public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
 
+    // VDSUSP ("dsusp", delayed suspend) is a BSD control character. Linux termios has no
+    // such field and its stty rejects the name, so only ask for it where it exists.
+    private static final boolean HAS_DELAYED_SUSPEND =
+            !System.getProperty("os.name", "").toLowerCase().contains("linux");
+
     private final File ttyDev;
     private String sttyStatusToRestore;
 
@@ -197,9 +202,23 @@ public abstract class UnixLikeTTYTerminal extends UnixLikeTerminal {
     protected void keyStrokeSignalsEnabled(boolean enabled) throws IOException {
         if(enabled) {
             runSTTYCommand("intr", "^C");
+            runSTTYCommand("susp", "^Z");
+            if(HAS_DELAYED_SUSPEND) {
+                runSTTYCommand("dsusp", "^Y");
+            }
         }
         else {
             runSTTYCommand("intr", "undef");
+            // The suspend characters belong to the application too. A full-screen UI binds
+            // Ctrl+Z and Ctrl+Y itself (undo / yank), and letting the kernel turn them into
+            // SIGTSTP suspends the process with the alternate screen and mouse reporting
+            // still enabled, which leaves the terminal unusable. Node's setRawMode
+            // (cfmakeraw) clears ISIG for the same reason. The "stty -g" snapshot taken in
+            // saveTerminalSettings restores the user's own characters on exit.
+            runSTTYCommand("susp", "undef");
+            if(HAS_DELAYED_SUSPEND) {
+                runSTTYCommand("dsusp", "undef");
+            }
         }
     }
 
