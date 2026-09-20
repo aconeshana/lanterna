@@ -41,6 +41,20 @@ public class MouseCharacterPatternTest {
     }
 
     @Test
+    public void decodesClickButtonsPerMouseActionConvention() throws Exception {
+        // xterm SGR encodes button in Cb & 0x3: 0=left, 1=middle, 2=right. MouseAction's
+        // own convention (see its Javadoc) is left=1, middle=2, right=3 — a different
+        // numbering that the decoder must translate, not pass through verbatim.
+        InputDecoder decoder = decoderFor(
+            ESC + "[<0;5;3M" + ESC + "[<1;5;3M" + ESC + "[<2;5;3M");
+
+        assertEquals(1, ((MouseAction) decoder.getNextCharacter(true)).getButton());
+        assertEquals(2, ((MouseAction) decoder.getNextCharacter(true)).getButton());
+        assertEquals(3, ((MouseAction) decoder.getNextCharacter(true)).getButton());
+        assertEquals(KeyType.EOF, decoder.getNextCharacter(true).getKeyType());
+    }
+
+    @Test
     public void decodesHorizontalWheelAsHorizontalScroll() throws Exception {
         // SGR wheel reports are 64 + direction (0=up, 1=down, 2=left, 3=right).
         // Left/right must not be reported as SCROLL_UP / SCROLL_DOWN, or a sideways

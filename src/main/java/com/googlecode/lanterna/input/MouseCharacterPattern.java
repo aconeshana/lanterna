@@ -100,14 +100,20 @@ public class MouseCharacterPattern implements CharacterPattern {
             // if the 6th bit is set it's a wheel event; the low two bits then encode
             // the direction (0 = up, 1 = down, 2 = left, 3 = right) rather than a
             // button index, giving buttons 4..7.
+            // Otherwise the low two bits (Cb & 0x3) are the xterm SGR button index:
+            // 0 = left, 1 = middle, 2 = right, 3 = none/release. Map these to
+            // MouseAction's own convention (no button = 0, left = 1, middle = 2,
+            // right = 3) rather than passing the raw xterm index through — the two
+            // numberings disagree on left/middle, so a literal pass-through swaps them.
             if((item & 0x40) != 0) {
                 button = 4 + (item & 0x3);
-            } else if((item & 0x2) != 0) {
-                button = 3;
-            } else if((item & 0x1) != 0) {
-                button = 1;
-            } else if((item & 0x1) == 0) {
-                button = 2;
+            } else {
+                switch (item & 0x3) {
+                    case 0: button = 1; break;
+                    case 1: button = 2; break;
+                    case 2: button = 3; break;
+                    default: button = 0; break;
+                }
             }
 
             // Get the modifier keys (it seems that they do not are always reported correctly depending on the terminal)
