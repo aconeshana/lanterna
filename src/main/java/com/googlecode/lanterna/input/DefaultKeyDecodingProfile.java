@@ -76,6 +76,7 @@ public class DefaultKeyDecodingProfile implements KeyDecodingProfile {
                     new OSCResponsePattern(),
                     new FocusEventPattern(),
                     new KittyKeyPattern(),
+                    new ModifyOtherKeysPattern(),
                     new TerminalQueryResponsePattern()
             }));
 
