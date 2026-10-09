@@ -22,6 +22,7 @@ import com.googlecode.lanterna.*;
 import com.googlecode.lanterna.graphics.Scrollable;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
+import com.googlecode.lanterna.terminal.PrivateModeTerminal;
 import com.googlecode.lanterna.terminal.Terminal;
 import com.googlecode.lanterna.terminal.TerminalResizeListener;
 
@@ -136,8 +137,12 @@ public class TerminalScreen extends AbstractScreen {
             return;
         }
 
-        isStarted = true;
         getTerminal().enterPrivateMode();
+        // Only now is the screen really started. Latching the flag first would make a failed
+        // entry permanent: the guard above turns every later startScreen() into a no-op, so a
+        // screen that is "started" without holding the alternate buffer can never be repaired,
+        // and the renderer goes on painting absolute rows into a main buffer that scrolls.
+        isStarted = true;
         if(refreshTerminalSize) {
             getTerminal().getTerminalSize();
         }
@@ -173,6 +178,37 @@ public class TerminalScreen extends AbstractScreen {
 
         getTerminal().exitPrivateMode();
         isStarted = false;
+    }
+
+    /**
+     * Puts a started screen back onto the alternate screen buffer, for an application that got
+     * the terminal back from something else and cannot tell what state it was handed.
+     * <p>
+     * {@link #startScreen()} cannot do this. It returns immediately on a screen that is already
+     * started, which is exactly the situation after a job-control stop, a shutdown hook that ran
+     * while the process kept going, or an external program that was given the terminal: the
+     * screen still considers itself started while the terminal may no longer hold the alternate
+     * buffer. Painting absolute row positions into the main buffer scrolls it, pushing a row of
+     * the current frame into the terminal's scrollback on every scroll.
+     * <p>
+     * Does nothing on a screen that was never started, or on a terminal that cannot report or
+     * re-assert private mode. Sets the full-redraw hint, since the alternate screen that comes
+     * back has undefined contents and a delta refresh would only write the cells that happen to
+     * differ from a front buffer describing a screen that no longer exists.
+     *
+     * @throws IOException If there was an underlying I/O error
+     * @see PrivateModeTerminal#reassertPrivateMode()
+     */
+    public synchronized void reassertPrivateMode() throws IOException {
+        if(!isStarted) {
+            return;
+        }
+        if(!(getTerminal() instanceof PrivateModeTerminal)) {
+            return;
+        }
+        ((PrivateModeTerminal) getTerminal()).reassertPrivateMode();
+        this.scrollHint = null;
+        this.fullRedrawHint = true;
     }
 
     @Override

@@ -25,6 +25,7 @@ import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.TextColor;
 import com.googlecode.lanterna.terminal.ExtendedTerminal;
 import com.googlecode.lanterna.terminal.MouseCaptureMode;
+import com.googlecode.lanterna.terminal.PrivateModeTerminal;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +40,8 @@ import java.nio.charset.StandardCharsets;
  * @see <a href="http://en.wikipedia.org/wiki/ANSI_escape_code">Wikipedia</a>
  * @author Martin
  */
-public abstract class ANSITerminal extends StreamBasedTerminal implements ExtendedTerminal {
+public abstract class ANSITerminal extends StreamBasedTerminal
+        implements ExtendedTerminal, PrivateModeTerminal {
 
     private MouseCaptureMode requestedMouseCaptureMode;
     private MouseCaptureMode mouseCaptureMode;
@@ -219,13 +221,28 @@ public abstract class ANSITerminal extends StreamBasedTerminal implements Extend
         if(inPrivateMode) {
             throw new IllegalStateException("Cannot call enterPrivateMode() when already in private mode");
         }
+        switchToPrivateMode();
+        inPrivateMode = true;
+    }
+
+    @Override
+    public void reassertPrivateMode() throws IOException {
+        switchToPrivateMode();
+        inPrivateMode = true;
+    }
+
+    /**
+     * Writes the alternate-screen sequence and the mouse-capture mode that belongs with it,
+     * without consulting or setting {@link #inPrivateMode}. Shared so that the repair in
+     * {@link #reassertPrivateMode()} cannot drift from the real transition.
+     */
+    private void switchToPrivateMode() throws IOException {
         writeCSISequenceToTerminal((byte) '?', (byte) '1', (byte) '0', (byte) '4', (byte) '9', (byte) 'h');
         if (requestedMouseCaptureMode != null) {
             this.mouseCaptureMode = requestedMouseCaptureMode;
             updateMouseCaptureMode(this.mouseCaptureMode, 'h');
         }
         flush();
-        inPrivateMode = true;
     }
 
     @Override
@@ -444,7 +461,8 @@ public abstract class ANSITerminal extends StreamBasedTerminal implements Extend
      *
      * @return True if there has been a call to enterPrivateMode() but not yet exitPrivateMode()
      */
-    boolean isInPrivateMode() {
+    @Override
+    public boolean isInPrivateMode() {
         return inPrivateMode;
     }
 
